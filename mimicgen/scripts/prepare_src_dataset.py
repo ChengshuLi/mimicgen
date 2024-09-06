@@ -4,11 +4,11 @@
 
 """
 Script to extract information needed for data generation from low-dimensional simulation states
-in a source dataset and add it to the source dataset. Basically a stripped down version of 
+in a source dataset and add it to the source dataset. Basically a stripped down version of
 dataset_states_to_obs.py script in the robomimic codebase, with a handful of modifications.
 
 Example usage:
-    
+
     # prepare a source dataset collected on robosuite Stack task
     python prepare_src_dataset.py --dataset /path/to/stack.hdf5 --env_interface MG_Stack --env_interface_type robosuite
 
@@ -72,7 +72,7 @@ def extract_datagen_info_from_trajectory(
     traj_len = len(states)
     for t in range(traj_len):
         # reset to state
-        env.reset_to({"states" : states[t]})
+        env.reset_to({"states": states[t]})
 
         # extract datagen info as a dictionary
         datagen_info = env_interface.get_datagen_info(action=actions[t]).to_dict()
@@ -104,9 +104,9 @@ def prepare_src_dataset(
     output_path=None,
 ):
     """
-    Adds DatagenInfo object instance for each timestep in each source demonstration trajectory 
+    Adds DatagenInfo object instance for each timestep in each source demonstration trajectory
     and stores it under the "datagen_info" key for each episode. Also store the @env_interface_name
-    and @env_interface_type used in the attribute of each key. This information is used during 
+    and @env_interface_type used in the attribute of each key. This information is used during
     MimicGen data generation.
 
     Args:
@@ -124,19 +124,21 @@ def prepare_src_dataset(
         output_path (str or None): if provided, write a new hdf5 here instead of modifying the
             original dataset in-place
     """
-
     # maybe write to new file instead of modifying existing file in-place
     if output_path is not None:
         shutil.copy(dataset_path, output_path)
         dataset_path = output_path
 
+    if env_interface_type == "omnigibson":
+        FileUtils.preprocess_omnigibson_dataset(dataset_path)
+
     # create environment that was to collect source demonstrations
     env_meta = FileUtils.get_env_metadata_from_dataset(dataset_path=dataset_path)
     env = EnvUtils.create_env_for_data_processing(
         env_meta=env_meta,
-        camera_names=[], 
-        camera_height=84, 
-        camera_width=84, 
+        camera_names=[],
+        camera_height=84,
+        camera_width=84,
         reward_shaping=False,
     )
     print("")
@@ -153,9 +155,11 @@ def prepare_src_dataset(
     )
     print("Created environment interface: {}".format(env_interface))
     print("")
-
     # some operations are env-type-specific
     is_robosuite_env = EnvUtils.is_robosuite_env(env_meta)
+
+    state_key = "state" if env_interface_type == "omnigibson" else "states"
+    action_key = "action" if env_interface_type == "omnigibson" else "actions"
 
     # get list of source demonstration keys from source hdf5
     demos = MG_FileUtils.get_all_demos_from_dataset(
@@ -177,13 +181,12 @@ def prepare_src_dataset(
         ep_grp = f["data/{}".format(ep)]
 
         # prepare states to reload from
-        states = ep_grp["states"][()]
+        states = ep_grp[state_key][()]
         initial_state = dict(states=states[0])
         if is_robosuite_env:
             initial_state["model"] = ep_grp.attrs["model_file"]
-
         # extract datagen info
-        actions = ep_grp["actions"][()]
+        actions = ep_grp[action_key][()]
         datagen_info = extract_datagen_info_from_trajectory(
             env=env,
             env_interface=env_interface,

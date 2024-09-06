@@ -38,6 +38,7 @@ import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
 
 import mimicgen
+import robomimic.utils.env_utils as EnvUtils
 import mimicgen.utils.file_utils as MG_FileUtils
 import mimicgen.utils.robomimic_utils as RobomimicUtils
 
@@ -171,7 +172,8 @@ def generate_dataset(
     os.makedirs(new_dataset_folder_path, exist_ok=exist_ok)
 
     # log terminal output to text file
-    RobomimicUtils.make_print_logger(txt_file=os.path.join(new_dataset_folder_path, 'log.txt'))
+    # TODO: this line conflicts with OG somehow
+    # RobomimicUtils.make_print_logger(txt_file=os.path.join(new_dataset_folder_path, 'log.txt'))
 
     # save config to disk
     MG_FileUtils.write_json(
@@ -225,7 +227,7 @@ def generate_dataset(
     # env args: don't use image obs when writing debug video
     use_image_obs = ((mg_config.obs.collect_obs and (len(mg_config.obs.camera_names) > 0)) if not write_video else False)
     use_depth_obs = False
-    
+
     # simulation environment
     env = RobomimicUtils.create_env(
         env_meta=env_meta,
@@ -236,7 +238,7 @@ def generate_dataset(
         camera_names=camera_names,
         camera_height=mg_config.obs.camera_height,
         camera_width=mg_config.obs.camera_width,
-        render=render, 
+        render=render,
         render_offscreen=write_video,
         use_image_obs=use_image_obs,
         use_depth_obs=use_depth_obs,
@@ -301,8 +303,8 @@ def generate_dataset(
     num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
 
+    # import pdb; pdb.set_trace()
     while True:
-
         # generate trajectory
         try:
             generated_traj = data_generator.generate(

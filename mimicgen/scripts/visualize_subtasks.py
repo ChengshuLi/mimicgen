@@ -84,7 +84,7 @@ def visualize_subtasks_with_env(
     should_add_border_to_frame = False
     for i in range(traj_len):
         # reset to state
-        env.reset_to({"states" : states[i]})
+        env.reset_to({"states": states[i]})
 
         # whether we are on last index of current subtask
         is_last_subtask_ind = (i == subtask_end_indices[cur_subtask_ind] - 1)
@@ -234,7 +234,6 @@ def visualize_subtasks(args):
         subtask_term_signals=subtask_term_signals,
         subtask_term_offset_ranges=subtask_term_offset_ranges,
     )
-
     # apply maximum offset to each subtask boundary
     offsets_to_apply = [x[1] for x in subtask_term_offset_ranges_ret]
     offsets_to_apply[-1] = 0
@@ -251,12 +250,11 @@ def visualize_subtasks(args):
 
     for ind in range(len(demo_keys)):
         ep = demo_keys[ind]
+        ep_grp = f["data/{}".format(ep)]
         print("Playing back episode: {}".format(ep))
-
         if args.use_obs:
-            traj_grp = f["data/{}".format(ep)]
             visualize_trajectory_with_obs(
-                traj_grp=traj_grp,
+                traj_grp=ep_grp,
                 subtask_end_indices=subtask_end_indices[ind],
                 video_writer=video_writer,
                 video_skip=args.video_skip,
@@ -264,10 +262,10 @@ def visualize_subtasks(args):
             )
             continue
 
-        states = f["data/{}/states".format(ep)][()]
+        states = ep_grp["states"][()] if "states" in ep_grp else ep_grp["state"][()]
         initial_state = dict(states=states[0])
         if is_robosuite_env:
-            initial_state["model"] = f["data/{}".format(ep)].attrs["model_file"]
+            initial_state["model"] = ep_grp.attrs["model_file"]
         visualize_subtasks_with_env(
             env=env,
             initial_state=initial_state,

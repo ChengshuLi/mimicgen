@@ -48,6 +48,7 @@ def set_basic_settings(
     max_num_failures=25,
     num_demo_to_render=10,
     num_fail_demo_to_render=25,
+    render_video=True,
     verbose=False,
 ):
     """
@@ -65,6 +66,7 @@ def set_basic_settings(
         max_num_failures (int): max failures to keep
         num_demo_to_render (int): max demos to render to video
         num_fail_demo_to_render (int): max fail demos to render to video
+        render_video (bool): whether to render videos
         verbose (bool): if True, make experiment name verbose using the passed settings
     """
 
@@ -122,6 +124,12 @@ def set_basic_settings(
         name="", 
         group=group, 
         values=[num_fail_demo_to_render],
+    )
+    generator.add_param(
+        key="experiment.render_video",
+        name="",
+        group=group,
+        values=[render_video],
     )
 
     return generator
