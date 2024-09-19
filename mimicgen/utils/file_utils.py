@@ -265,14 +265,14 @@ def write_demo_to_hdf5(
     if isinstance(states[0], dict):
         states = TensorUtils.list_of_flat_dict_to_dict_of_list(states)
         for k in states:
-            ep_data_grp.create_dataset("states/{}".format(k), data=np.array(states[k]))
+            ep_data_grp.create_dataset("states/{}".format(k), data=np.stack(states[k]))
     else:
-        ep_data_grp.create_dataset("states", data=np.array(states))
+        ep_data_grp.create_dataset("states", data=np.stack(states))
 
     # write observations
     obs = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
     for k in obs:
-        ep_data_grp.create_dataset("obs/{}".format(k), data=np.array(obs[k]), compression="gzip")
+        ep_data_grp.create_dataset("obs/{}".format(k), data=np.stack(obs[k]), compression="gzip")
 
     # write datagen info
     datagen_info = TensorUtils.list_of_flat_dict_to_dict_of_list([x.to_dict() for x in datagen_info])
