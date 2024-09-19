@@ -214,6 +214,10 @@ def prepare_src_dataset(
     print("Modified {} trajectories to include datagen info.".format(len(demos)))
     f.close()
 
+    # Properly shutdown omnigibson if needed
+    if env_interface_type == "omnigibson":
+        import omnigibson as og
+        og.shutdown()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
