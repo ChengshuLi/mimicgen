@@ -378,9 +378,9 @@ class WaypointTrajectory(object):
                 obs = env.get_observation()
 
                 if env.eef_current_marker is not None:
-                    env.eef_current_marker.set_position(env.env.robots[0].get_eef_position())
+                    env.eef_current_marker.set_position_orientation(position=env.env.robots[0].get_eef_position())
                 if env.eef_goal_marker is not None:
-                    env.eef_goal_marker.set_position(waypoint.pose[0:3, 3])
+                    env.eef_goal_marker.set_position_orientation(position=waypoint.pose[0:3, 3])
 
                 # convert target pose to arm action
                 action_pose = env_interface.target_pose_to_action(target_pose=waypoint.pose)
