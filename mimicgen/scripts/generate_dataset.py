@@ -501,6 +501,10 @@ def generate_dataset(
     #       but you can do that if you wish -- the information is stored in @selected_src_demo_inds_all
     #       and @selected_src_demo_inds_succ
 
+    if env_meta["type"] == EnvUtils.EB.EnvType.OG_TYPE:
+        import omnigibson as og
+        og.shutdown()
+
     return final_important_stats
 
 
