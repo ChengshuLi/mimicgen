@@ -10,7 +10,6 @@ import numpy as np
 import omnigibson as og
 import omnigibson.utils.transform_utils as T
 
-import mimicgen.utils.pose_utils as PoseUtils
 from mimicgen.env_interfaces.base import MG_EnvInterface
 
 import torch as th
