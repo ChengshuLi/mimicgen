@@ -9,6 +9,7 @@ import numpy as np
 
 import omnigibson as og
 import omnigibson.utils.transform_utils as T
+from omnigibson.object_states import *
 
 from mimicgen.env_interfaces.base import MG_EnvInterface
 
@@ -275,4 +276,41 @@ class MG_TestPenBook(OmniGibsonInterface):
         signals["grasp"] = int(self.robot.is_grasping(arm="default", candidate_obj=self.env.task.object_scope["rubber_eraser.n.01_1"]))
 
         # final subtask is placing the eraser on the book (motion relative to book) - but final subtask signal is not needed
+        return signals
+
+
+from omnigibson.object_states import *
+
+class MG_TestCabinet(OmniGibsonInterface):
+    """
+    Corresponds to OG TestCabinet task and variants.
+    """
+    def get_object_poses(self):
+        """
+        Gets the pose of each object relevant to MimicGen data generation in the current scene.
+
+        Returns:
+            object_poses (dict): dictionary that maps object name (str) to object pose matrix (4x4 np.array)
+        """
+        # one relevant object - cabinet
+        return dict(
+            cabinet=self.get_object_pose(obj=self.env.task.object_scope["cabinet.n.01_1"]),
+        )
+
+    def get_subtask_term_signals(self):
+        """
+        Gets a dictionary of binary flags for each subtask in a task. The flag is 1
+        when the subtask has been completed and 0 otherwise. MimicGen only uses this
+        when parsing source demonstrations at the start of data generation, and it only
+        uses the first 0 -> 1 transition in this signal to detect the end of a subtask.
+
+        Returns:
+            subtask_term_signals (dict): dictionary that maps subtask name to termination flag (0 or 1)
+        """
+        signals = dict()
+
+        # The signal is when the robot touches the cabinet
+        signals["grasp"] = int(self.robot.states[Touching].get_value(self.env.task.object_scope["cabinet.n.01_1"]))
+
+        # final subtask is pulling the drawer open - but final subtask signal is not needed
         return signals
