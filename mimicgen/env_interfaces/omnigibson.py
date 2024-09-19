@@ -140,7 +140,7 @@ class OmniGibsonInterface(MG_EnvInterface):
         del relative
 
         # Ensure float32
-        target_pose = target_pose.float()
+        target_pose = target_pose.astype(np.float32)
 
         # Convert to torch tensor
         target_pose = th.from_numpy(target_pose)
@@ -187,7 +187,7 @@ class OmniGibsonInterface(MG_EnvInterface):
         del relative
 
         # Ensure float32
-        action = action.float()
+        action = action.astype(np.float32)
 
         # Convert to torch tensor
         action = th.from_numpy(action)
