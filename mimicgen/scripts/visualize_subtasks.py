@@ -281,6 +281,9 @@ def visualize_subtasks(args):
     if write_video:
         video_writer.close()
 
+    if not args.use_obs and env_meta["type"] == EnvUtils.EB.EnvType.OG_TYPE:
+        import omnigibson as og
+        og.shutdown()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
