@@ -310,7 +310,7 @@ class MG_TestCabinet(OmniGibsonInterface):
         signals = dict()
 
         # The signal is when the robot touches the cabinet
-        signals["grasp"] = int(self.robot.states[Touching].get_value(self.env.task.object_scope["cabinet.n.01_1"]))
+        signals["touch"] = int(self.robot.states[Touching].get_value(self.env.task.object_scope["cabinet.n.01_1"]))
 
         # final subtask is pulling the drawer open - but final subtask signal is not needed
         return signals
