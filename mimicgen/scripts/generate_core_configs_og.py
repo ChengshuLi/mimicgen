@@ -47,6 +47,7 @@ CAMERA_SIZE = (84, 84)
 BASE_BASE_CONFIG_PATH = os.path.join(mimicgen.__path__[0], "exps/templates/omnigibson")
 BASE_CONFIGS = [
     os.path.join(BASE_BASE_CONFIG_PATH, "test_pen_book.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "test_cabinet.json"),
 ]
 
 def make_generators(base_configs):
@@ -59,8 +60,18 @@ def make_generators(base_configs):
             dataset_path=os.path.join(SRC_DATA_DIR, "test_pen_book.hdf5"),
             dataset_name="test_pen_book",
             generation_path="{}/test_pen_book".format(OUTPUT_FOLDER),
-            # task_interface="MG_Stack",
             tasks=["test_pen_book_D0", "test_pen_book_D1"],
+            task_names=["D0", "D1"],
+            select_src_per_subtask=False,
+            selection_strategy="random",
+            selection_strategy_kwargs=None,
+            subtask_term_offset_range=[[5, 10], None],
+        ),
+        dict(
+            dataset_path=os.path.join(SRC_DATA_DIR, "test_cabinet.hdf5"),
+            dataset_name="test_cabinet",
+            generation_path="{}/test_cabinet".format(OUTPUT_FOLDER),
+            tasks=["test_cabinet_D0", "test_cabinet_D1"],
             task_names=["D0", "D1"],
             select_src_per_subtask=False,
             selection_strategy="random",
