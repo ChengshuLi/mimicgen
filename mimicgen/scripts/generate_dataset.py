@@ -98,6 +98,7 @@ def generate_dataset(
     video_skip=5,
     render_image_names=None,
     pause_subtask=False,
+    bimanual=False,
 ):
     """
     Main function to collect a new dataset with MimicGen.
@@ -228,6 +229,7 @@ def generate_dataset(
     use_image_obs = ((mg_config.obs.collect_obs and (len(mg_config.obs.camera_names) > 0)) if not write_video else False)
     use_depth_obs = False
 
+    # TODO: why here is the robomimicutil, not omnigibsonutil?
     # simulation environment
     env = RobomimicUtils.create_env(
         env_meta=env_meta,
@@ -267,18 +269,26 @@ def generate_dataset(
     )
     print("Created environment interface: {}".format(env_interface))
 
+    # self.arm_command_start_idx {'left': 5, 'right': 12}
+    # self.arm_command_end_idx {'left': 11, 'right': 18}
+
     # make sure we except the same exceptions that we would normally except during policy rollouts
     exceptions_to_except = env.rollout_exceptions
 
     # get task spec object from config
     task_spec_json_string = mg_config.task.task_spec.dump()
-    task_spec = MG_TaskSpec.from_json(json_string=task_spec_json_string)
+    if bimanual:
+        task_spec = MG_TaskSpec.from_json_bimanual(json_string=task_spec_json_string)
+    else:
+        task_spec = MG_TaskSpec.from_json(json_string=task_spec_json_string)
+    
 
     # make data generator object
     data_generator = DataGenerator(
         task_spec=task_spec,
         dataset_path=source_dataset_path,
         demo_keys=all_demos,
+        bimanual=bimanual
     )
 
     print("\n==== Created Data Generator ====")
@@ -303,7 +313,30 @@ def generate_dataset(
     num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
 
-    # import pdb; pdb.set_trace()
+    # TODO: need to make this specialized for different tasks
+    # including changing the properties of different objects
+    import omnigibson as og
+    state = og.sim.dump_state()
+    og.sim.stop()
+
+    # notebook = env.env.scene.object_registry("name", "notebook")
+    # notebook.links['base_link'].density = 10
+
+    # coffee_cup.links['base_link'].friction = 0.01 # friction is not in the link object
+
+    # giftbox = env.scene.object_registry("name", "gift_box")
+    # giftbox.links['base_link'].density = 100
+
+    coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
+    coffee_cup.links['base_link'].density = 30
+
+    paper_cup = env.env.scene.object_registry("name", "paper_cup")
+    paper_cup.links['base_link'].density = 100
+
+    og.sim.play()
+    og.sim.load_state(state)
+    for _ in range(10): og.sim.step()
+    
     while True:
         # generate trajectory
         try:
@@ -569,6 +602,7 @@ def main(args):
             video_skip=args.video_skip,
             render_image_names=args.render_image_names,
             pause_subtask=args.pause_subtask,
+            bimanual=args.bimanual
         )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
@@ -596,6 +630,11 @@ if __name__ == "__main__":
         "--auto-remove-exp",
         action='store_true',
         help="force delete the experiment folder if it exists"
+    )
+    parser.add_argument(
+        "--bimanual",
+        action='store_true',
+        help="force the code to use bimanual setup"
     )
     parser.add_argument(
         "--render",

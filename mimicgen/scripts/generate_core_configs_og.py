@@ -46,8 +46,11 @@ CAMERA_SIZE = (84, 84)
 
 BASE_BASE_CONFIG_PATH = os.path.join(mimicgen.__path__[0], "exps/templates/omnigibson")
 BASE_CONFIGS = [
-    os.path.join(BASE_BASE_CONFIG_PATH, "test_pen_book.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "test_cabinet.json"),
+#     os.path.join(BASE_BASE_CONFIG_PATH, "test_pen_book.json"),
+#     os.path.join(BASE_BASE_CONFIG_PATH, "test_cabinet.json"),
+#     os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_giftbox.json"),
+    # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_notebook.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_cup.json"),
 ]
 
 def make_generators(base_configs):
@@ -56,27 +59,60 @@ def make_generators(base_configs):
     settings for each.
     """
     all_settings = [
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_pen_book.hdf5"),
+        #     dataset_name="test_pen_book",
+        #     generation_path="{}/test_pen_book".format(OUTPUT_FOLDER),
+        #     tasks=["test_pen_book_D0", "test_pen_book_D1"],
+        #     task_names=["D0", "D1"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 10], None],
+        # ),
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_cabinet.hdf5"),
+        #     dataset_name="test_cabinet",
+        #     generation_path="{}/test_cabinet".format(OUTPUT_FOLDER),
+        #     tasks=["test_cabinet_D0", "test_cabinet_D1"],
+        #     task_names=["D0", "D1"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 10], None],
+        # ),
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_giftbox.hdf5"),
+        #     dataset_name="test_tiago_giftbox",
+        #     generation_path="{}/test_tiago_giftbox".format(OUTPUT_FOLDER),
+        #     tasks=["test_tiago_giftbox_D0", "test_tiago_giftbox_D1"],
+        #     task_names=["D0", "D1"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 10], None],
+        # ),
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_notebook.hdf5"),
+        #     dataset_name="test_tiago_notebook",
+        #     generation_path="{}/test_tiago_notebook".format(OUTPUT_FOLDER),
+        #     tasks=["test_tiago_notebook_D0", "test_tiago_notebook_D1"],
+        #     task_names=["D0", "D1"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 6], [0, 1], None],
+        # ),
         dict(
-            dataset_path=os.path.join(SRC_DATA_DIR, "test_pen_book.hdf5"),
-            dataset_name="test_pen_book",
-            generation_path="{}/test_pen_book".format(OUTPUT_FOLDER),
-            tasks=["test_pen_book_D0", "test_pen_book_D1"],
+            dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_cup.hdf5"),
+            dataset_name="test_tiago_cup",
+            generation_path="{}/test_tiago_cup".format(OUTPUT_FOLDER),
+            tasks=["test_tiago_cup_D0", "test_tiago_cup_D1"],
             task_names=["D0", "D1"],
             select_src_per_subtask=False,
             selection_strategy="random",
             selection_strategy_kwargs=None,
-            subtask_term_offset_range=[[5, 10], None],
-        ),
-        dict(
-            dataset_path=os.path.join(SRC_DATA_DIR, "test_cabinet.hdf5"),
-            dataset_name="test_cabinet",
-            generation_path="{}/test_cabinet".format(OUTPUT_FOLDER),
-            tasks=["test_cabinet_D0", "test_cabinet_D1"],
-            task_names=["D0", "D1"],
-            select_src_per_subtask=False,
-            selection_strategy="random",
-            selection_strategy_kwargs=None,
-            subtask_term_offset_range=[[5, 10], None],
+            subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         ),
     ]
 
@@ -117,22 +153,43 @@ def make_generator(config_file, settings):
     )
 
     # set settings for subtasks
-    ConfigUtils.set_subtask_settings(
-        generator=generator,
-        group=0,
-        base_config_file=config_file,
-        select_src_per_subtask=settings["select_src_per_subtask"],
-        subtask_term_offset_range=settings["subtask_term_offset_range"],
-        selection_strategy=settings.get("selection_strategy", None),
-        selection_strategy_kwargs=settings.get("selection_strategy_kwargs", None),
-        # default settings: action noise 0.05, with 5 interpolation steps
-        # Disable any action noise for now
-        # action_noise=0.05,
-        action_noise=0.0,
-        num_interpolation_steps=5,
-        num_fixed_steps=0,
-        verbose=False,
-    )
+    bimanual=True
+    if bimanual:
+        # now all the configs are from the configuraiton file 
+        ConfigUtils.set_subtask_settings_bimanual(
+            generator=generator,
+            group=0,
+            base_config_file=config_file,
+            select_src_per_subtask=settings["select_src_per_subtask"],
+            # subtask_term_offset_range=settings["subtask_term_offset_range"],
+            # selection_strategy=settings.get("selection_strategy", None),
+            # selection_strategy_kwargs=settings.get("selection_strategy_kwargs", None),
+            # # default settings: action noise 0.05, with 5 interpolation steps
+            # # Disable any action noise for now
+            # # action_noise=0.05,
+            # action_noise=0.0,
+            # num_interpolation_steps=5,
+            # num_fixed_steps=0,
+            verbose=False,
+            # arm=False,
+        )
+    else:
+        ConfigUtils.set_subtask_settings(
+            generator=generator,
+            group=0,
+            base_config_file=config_file,
+            select_src_per_subtask=settings["select_src_per_subtask"],
+            subtask_term_offset_range=settings["subtask_term_offset_range"],
+            selection_strategy=settings.get("selection_strategy", None),
+            selection_strategy_kwargs=settings.get("selection_strategy_kwargs", None),
+            # default settings: action noise 0.05, with 5 interpolation steps
+            # Disable any action noise for now
+            # action_noise=0.05,
+            action_noise=0.0,
+            num_interpolation_steps=5,
+            num_fixed_steps=0,
+            verbose=False,
+        )
 
     # optionally set env interface to use, and type
     # generator.add_param(

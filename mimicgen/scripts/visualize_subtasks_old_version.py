@@ -27,7 +27,6 @@ import h5py
 import argparse
 import imageio
 import numpy as np
-import pdb
 
 import robomimic
 import robomimic.utils.obs_utils as ObsUtils
@@ -80,15 +79,6 @@ def visualize_subtasks_with_env(
     env.reset()
     env.reset_to(initial_state)
     traj_len = len(states)
-
-    # here is to change the main camera view point
-    import omnigibson as og
-    import torch as th
-    og.sim.viewer_camera.set_position_orientation(
-        position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-        orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-    )
-    for _ in range(5): og.sim.render()
 
     cur_subtask_ind = 0
     should_add_border_to_frame = False
@@ -221,10 +211,9 @@ def visualize_subtasks(args):
         filter_key=args.filter_key,
         start=None,
         n=args.n,
-    ) # example output: ['demo_0']
+    ) # ['demo_0']
+    import pdb; pdb.set_trace()
 
-    # TODO: need to change the bimanual signal when debugging 
-    bimanual = args.bimanual
     # we will parse the source dataset to get subtask boundaries using either the task spec in the
     # provided config or the provided arguments
     task_spec = None
@@ -233,73 +222,26 @@ def visualize_subtasks(args):
     if args.config is not None:
         with open(args.config, 'r') as f_config:
             mg_config = json.load(f_config)
-        if not bimanual:
-            task_spec = MG_TaskSpec.from_json(json_dict=mg_config["task"]["task_spec"])
-            pdb.set_trace()
-        else:
-            task_spec = MG_TaskSpec.from_json_bimanual(json_dict=mg_config["task"]["task_spec"])
+        task_spec = MG_TaskSpec.from_json(json_dict=mg_config["task"]["task_spec"])
     else:
         subtask_term_signals = args.signals + [None]
         subtask_term_offset_ranges = [(0, offset) for offset in args.offsets] + [None]
 
-    # TODO: okayyy great, right now task_spec is a list with 2 element, each element is a list of dict.
-    if bimanual:
-        # parse dataset to get subtask boundaries
-        _, subtask_indices, _, subtask_term_offset_ranges_ret = MG_FileUtils.parse_source_dataset_bimanual(
-            dataset_path=dataset_path,
-            demo_keys=demo_keys,
-            task_spec=task_spec,
-            subtask_term_signals=subtask_term_signals,
-            subtask_term_offset_ranges=subtask_term_offset_ranges,
-        )
-    else:
-        _, subtask_indices, _, subtask_term_offset_ranges_ret = MG_FileUtils.parse_source_dataset(
-            dataset_path=dataset_path,
-            demo_keys=demo_keys,
-            task_spec=task_spec,
-            subtask_term_signals=subtask_term_signals,
-            subtask_term_offset_ranges=subtask_term_offset_ranges,
-        )
-
-    # the log given the original format
-    # some additional information 
-    # (Pdb) subtask_indices
-    # array([[[  0, 102],
-    #         [102, 248],
-    #         [248, 257]]])
-    # (Pdb) p subtask_indices.shape
-    # (1, 3, 2)
-    # (Pdb) p subtask_term_offset_ranges_ret
-    # [(5, 6), (0, 1), (0, 0)]
-    # (Pdb) p subtask_term_offset_ranges_ret.shape
-    # *** AttributeError: 'list' object has no attribute 'shape'
-
-    # TODO: the current indexing is still trying to match the mimicgen implementation, should be changed/removed later on
-    print('subtask_indices', subtask_indices)
-    print('subtask_term_offset_ranges_ret', subtask_term_offset_ranges_ret)
-
-    def merge_two_arm_subtasks_indexes(subtask_indices):
-        # merge the two arm subtask indexes
-        # subtask_indices is shape (N, S, 2) where N is num demos, S is num subtasks and each entry is 2-tuple of start and end
-        left_arm_term_steps = np.unique(subtask_indices[0])
-        right_arm_term_steps = np.unique(subtask_indices[1])
-        # merge the two arm subtask indexes
-        term_steps = np.sort(np.unique(np.concatenate((left_arm_term_steps, right_arm_term_steps))))
-        subtask_indices = []
-        for i in range(len(term_steps) - 1):
-            subtask_indices.append([term_steps[i], term_steps[i + 1]])
-        subtask_indices = np.array(subtask_indices)[None,:,:]
-        return subtask_indices
-
-    subtask_indices = merge_two_arm_subtasks_indexes(subtask_indices)
-
-    # TODO: need to change the way for adding the offsets
-    # # apply maximum offset to each subtask boundary
-    # offsets_to_apply = [x[1] for x in subtask_term_offset_ranges_ret]
-    # offsets_to_apply[-1] = 0
-    # # subtask_indices is shape (N, S, 2) where N is num demos, S is num subtasks and each entry is 2-tuple of start and end
+    # parse dataset to get subtask boundaries
+    _, subtask_indices, _, subtask_term_offset_ranges_ret = MG_FileUtils.parse_source_dataset(
+        dataset_path=dataset_path,
+        demo_keys=demo_keys,
+        task_spec=task_spec,
+        subtask_term_signals=subtask_term_signals,
+        subtask_term_offset_ranges=subtask_term_offset_ranges,
+    )
+    import pdb; pdb.set_trace()
+    # apply maximum offset to each subtask boundary
+    offsets_to_apply = [x[1] for x in subtask_term_offset_ranges_ret]
+    offsets_to_apply[-1] = 0
+    # subtask_indices is shape (N, S, 2) where N is num demos, S is num subtasks and each entry is 2-tuple of start and end
     subtask_end_indices = subtask_indices[:, :, 1]
-    subtask_end_indices = subtask_end_indices
+    subtask_end_indices = subtask_end_indices + np.array(offsets_to_apply)[None] # offsets shape (1, S)
 
     f = h5py.File(args.dataset, "r")
 
@@ -413,11 +355,6 @@ if __name__ == "__main__":
         nargs='+',
         default=None,
         help="(optional) camera name(s) / image observation(s) to use for rendering on-screen or to video",
-    )
-    parser.add_argument(
-        "--bimanual",
-        action='store_true',
-        help="force the code to use bimanual setup"
     )
     args = parser.parse_args()
     visualize_subtasks(args)

@@ -23,7 +23,7 @@ import argparse
 import numpy as np
 from copy import deepcopy
 from tqdm import tqdm
-
+import pdb
 import robomimic
 import robomimic.utils.tensor_utils as TensorUtils
 import robomimic.utils.file_utils as FileUtils
@@ -72,9 +72,11 @@ def extract_datagen_info_from_trajectory(
     traj_len = len(states)
     for t in range(traj_len):
         # reset to state
+        print('timestep:', t)
         env.reset_to({"states": states[t]})
 
         # extract datagen info as a dictionary
+        # datagen_info is a dict with dict_keys(['eef_pose', 'object_poses', 'subtask_term_signals', 'target_pose', 'gripper_action'])
         datagen_info = env_interface.get_datagen_info(action=actions[t]).to_dict()
         all_datagen_infos.append(datagen_info)
 
@@ -129,7 +131,7 @@ def prepare_src_dataset(
         shutil.copy(dataset_path, output_path)
         dataset_path = output_path
 
-    if env_interface_type == "omnigibson":
+    if env_interface_type == "omnigibson" or env_interface_type == "omnigibson_bimanual":
         FileUtils.preprocess_omnigibson_dataset(dataset_path)
 
     # create environment that was to collect source demonstrations
@@ -158,8 +160,8 @@ def prepare_src_dataset(
     # some operations are env-type-specific
     is_robosuite_env = EnvUtils.is_robosuite_env(env_meta)
 
-    state_key = "state" if env_interface_type == "omnigibson" else "states"
-    action_key = "action" if env_interface_type == "omnigibson" else "actions"
+    state_key = "state" if env_interface_type == "omnigibson" or env_interface_type == 'omnigibson_bimanual' else "states"
+    action_key = "action" if env_interface_type == "omnigibson" or env_interface_type == 'omnigibson_bimanual' else "actions"
 
     # get list of source demonstration keys from source hdf5
     demos = MG_FileUtils.get_all_demos_from_dataset(
@@ -215,7 +217,7 @@ def prepare_src_dataset(
     f.close()
 
     # Properly shutdown omnigibson if needed
-    if env_interface_type == "omnigibson":
+    if env_interface_type == "omnigibson" or env_interface_type == "omnigibson_bimanual":
         import omnigibson as og
         og.shutdown()
 
