@@ -292,6 +292,126 @@ def set_subtask_settings(
                 values=[num_fixed_steps[i]],
             )
 
+
+def set_subtask_settings_bimanual(
+    generator,
+    group,
+    base_config_file,
+    select_src_per_subtask,
+    verbose=False,
+):
+    """
+    Sets config generator parameters for each subtask.
+
+    Args:
+        generator (robomimic ConfigGenerator instance): config generator object
+        group (int): parameter group for these settings
+        base_config_file (str): path to base config file being used for generating configs
+        select_src_per_subtask (bool): whether to select src demo for each subtask
+        subtask_term_offset_range (list or None): if provided, should be list of 2-tuples, one
+            entry per subtask, with the last entry being None
+        selection_strategy (str or None): src demo selection strategy
+        selection_strategy_kwargs (dict or None): kwargs for selection strategy
+        action_noise (float or list or None): action noise for all subtasks
+        num_interpolation_steps (int or list or None): interpolation steps for all subtasks
+        num_fixed_steps (int or list or None): interpolation steps for all subtasks
+        verbose (bool): if True, make experiment name verbose using the passed settings
+    """
+    # TODO: need to add phase to the subtask setting 
+    # currently matching v2 config
+    # config architecture
+    # - arm_left
+    #   - subtask_1
+    #   - subtask_2
+    #   - ...
+    # - arm_right
+    #   - subtask_1
+    #   - subtask_2
+    #   - ...
+
+    # get number of subtasks
+    with open(base_config_file, 'r') as f:
+        config = json.load(f)
+        num_subtasks = len(config["task"]["task_spec"])
+
+    # whether to select a different source demonstration for each subtask
+    generator.add_param(
+        key="experiment.generation.select_src_per_subtask",
+        name="select_src_per_subtask" if verbose else "",
+        group=group,
+        values=[select_src_per_subtask],
+        value_names=["t" if select_src_per_subtask else "f"],
+    )
+
+    # settings for each subtask
+
+    left_subtask_configs = config["task"]["task_spec"]["arm_left"]
+    num_subtasks_left = len(left_subtask_configs)
+
+    right_subtask_configs = config["task"]["task_spec"]["arm_right"]
+    num_subtasks_right = len(right_subtask_configs)
+
+    # reading randomization range offset from the config file 
+    for i in range(num_subtasks_left):
+
+        cur_range_l = left_subtask_configs[f"subtask_{int(i+1)}"]["subtask_term_offset_range"]
+        print(i, cur_range_l)
+        if (i == num_subtasks_left - 1):
+                assert cur_range_l is None
+        else:
+            assert (cur_range_l is None) or (len(cur_range_l) == 2)
+        generator.add_param(
+                key="task.task_spec.arm_left.subtask_{}.subtask_term_offset_range".format(i+1),
+                name="offset" if (verbose and (i == 0)) else "", 
+                group=group,
+                values=[cur_range_l],
+            )
+        
+        name_mapping = {
+            "selection_strategy": "selection_strategy",
+            "selection_strategy_kwargs": "selection_strategy_kwargs",
+            "action_noise": "noise",
+            "num_interpolation_steps":"ni",
+            "num_fixed_steps": "ni",
+            "subtask_term_step": "subtask_term_step"
+        }
+        for kwargs in name_mapping.keys():
+            generator.add_param(
+                key="task.task_spec.arm_left.subtask_{}.{}".format(i+1, kwargs),
+                name=name_mapping[f"{kwargs}"] if (verbose and (i == 0)) else "", 
+                group=group,
+                values=[left_subtask_configs[f"subtask_{int(i+1)}"][kwargs]],
+            )
+        
+    for i in range(num_subtasks_right):
+        cur_range_r = right_subtask_configs[f"subtask_{int(i+1)}"]["subtask_term_offset_range"]
+        print(i, cur_range_r)
+        if (i == num_subtasks_right - 1):
+                assert cur_range_r is None
+        else:
+            assert (cur_range_r is None) or (len(cur_range_r) == 2)
+        generator.add_param(
+            key="task.task_spec.arm_right.subtask_{}.subtask_term_offset_range".format(i+1),
+            name="offset" if (verbose and (i == 0)) else "", 
+            group=group,
+            values=[cur_range_r],
+        )
+
+        name_mapping = {
+            "selection_strategy": "selection_strategy",
+            "selection_strategy_kwargs": "selection_strategy_kwargs",
+            "action_noise": "noise",
+            "num_interpolation_steps":"ni",
+            "num_fixed_steps": "ni",
+        }
+        for kwargs in name_mapping.keys():
+            generator.add_param(
+                key="task.task_spec.arm_right.subtask_{}.{}".format(i+1, kwargs),
+                name=name_mapping[f"{kwargs}"] if (verbose and (i == 0)) else "", 
+                group=group,
+                values=[right_subtask_configs[f"subtask_{int(i+1)}"][kwargs]],
+            )
+
     return generator
 
 
