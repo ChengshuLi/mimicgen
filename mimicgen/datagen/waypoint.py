@@ -11,7 +11,8 @@ from copy import deepcopy
 
 import mimicgen
 import mimicgen.utils.pose_utils as PoseUtils
-
+import pdb
+import copy
 
 class Waypoint(object):
     """
@@ -29,6 +30,16 @@ class Waypoint(object):
         self.gripper_action = np.array(gripper_action)
         self.noise = noise
         assert len(self.gripper_action.shape) == 1
+    
+    def merge_wp(self, other):
+        """
+        Merge another Waypoint object into this one.
+        """
+        self.pose = np.concatenate([self.pose, other.pose], axis=0)
+        self.gripper_action = np.concatenate([self.gripper_action, other.gripper_action], axis=0)
+        self.noise = min(self.noise, other.noise)
+        # TODO
+        self.noise = 0.0
 
 
 class WaypointSequence(object):
@@ -119,6 +130,11 @@ class WaypointSequence(object):
         seq_2 = self.sequence[ind:]
         return WaypointSequence(sequence=seq_1), WaypointSequence(sequence=seq_2)
 
+    def merge(self, other):
+        """
+        Merge another WaypointSequence object into this one.
+        """
+        self.sequence += other.sequence
 
 class WaypointTrajectory(object):
     """
@@ -212,11 +228,26 @@ class WaypointTrajectory(object):
         else:
             # linearly interpolate between the last pose and the new waypoint
             last_waypoint = self.last_waypoint
-            poses, num_steps_2 = PoseUtils.interpolate_poses(
-                pose_1=last_waypoint.pose,
-                pose_2=pose,
-                num_steps=num_steps,
-            )
+            if last_waypoint.pose.shape[0] == 8:
+                poses_left, num_steps_2_left = PoseUtils.interpolate_poses(
+                    pose_1=last_waypoint.pose[0:4, :],
+                    pose_2=pose[0:4, :],
+                    num_steps=num_steps,
+                )
+                poses_right, num_steps_2_right = PoseUtils.interpolate_poses(
+                    pose_1=last_waypoint.pose[4:, :],
+                    pose_2=pose[4:, :],
+                    num_steps=num_steps,
+                )
+                poses = np.concatenate([poses_left, poses_right], axis=1)
+                assert num_steps_2_left == num_steps_2_right
+                num_steps_2 = num_steps_2_left
+            else:
+                poses, num_steps_2 = PoseUtils.interpolate_poses(
+                    pose_1=last_waypoint.pose,
+                    pose_2=pose,
+                    num_steps=num_steps,
+                )
             assert num_steps == num_steps_2
             gripper_actions = np.array([gripper_action for _ in range(num_steps + 2)])
             # make sure to skip the first element of the new path, which already exists on the current trajectory path
@@ -284,8 +315,8 @@ class WaypointTrajectory(object):
             if need_interp:
                 # interpolation segment
                 self.add_waypoint_sequence_for_target_pose(
-                    pose=target_for_interpolation.pose,
-                    gripper_action=target_for_interpolation.gripper_action,
+                    pose=target_for_interpolation.pose, # 8x4
+                    gripper_action=target_for_interpolation.gripper_action, #2,
                     num_steps=num_steps_interp,
                     action_noise=action_noise,
                     skip_interpolation=False,
@@ -377,11 +408,24 @@ class WaypointTrajectory(object):
                 state = env.get_state()["states"]
                 obs = env.get_observation()
 
-                if env.eef_current_marker is not None:
-                    env.eef_current_marker.set_position_orientation(position=env.env.robots[0].get_eef_position())
-                if env.eef_goal_marker is not None:
-                    env.eef_goal_marker.set_position_orientation(position=waypoint.pose[0:3, 3])
-
+                if waypoint.pose.shape[0] == 8:
+                    # bimanual setting
+                    # TODO: change the logic based on bimanual indicator
+                    if env.eef_current_marker_left is not None:
+                        env.eef_current_marker_left.set_position_orientation(position=env.env.robots[0].get_eef_position('left'))
+                    if env.eef_current_marker_right is not None:
+                        env.eef_current_marker_right.set_position_orientation(position=env.env.robots[0].get_eef_position('right'))
+                    if env.eef_goal_marker_left is not None:
+                        env.eef_goal_marker_left.set_position_orientation(position=waypoint.pose[0:3, 3])
+                    if env.eef_goal_marker_right is not None:
+                        env.eef_goal_marker_right.set_position_orientation(position=waypoint.pose[4:7, 3])
+                else:
+                    # single arm setting
+                    if env.eef_current_marker is not None:
+                        env.eef_current_marker.set_position_orientation(position=env.env.robots[0].get_eef_position())
+                    if env.eef_goal_marker is not None:
+                        env.eef_goal_marker.set_position_orientation(position=waypoint.pose[0:3, 3])
+                # pdb.set_trace()
                 # convert target pose to arm action
                 action_pose = env_interface.target_pose_to_action(target_pose=waypoint.pose)
 
@@ -390,8 +434,15 @@ class WaypointTrajectory(object):
                     action_pose += waypoint.noise * np.random.randn(*action_pose.shape)
                     action_pose = np.clip(action_pose, -1., 1.)
 
-                # add in gripper action
-                play_action = np.concatenate([action_pose, waypoint.gripper_action], axis=0)
+                if action_pose.shape[0] == 19:
+                    # bimanual setting
+                    # TODO: change the logic based on bimanual indicator
+                    play_action = copy.deepcopy(action_pose)
+                    play_action[env_interface.gripper_action_dim] = waypoint.gripper_action
+                else:
+                    # single arm setting
+                    # add in gripper action
+                    play_action = np.concatenate([action_pose, waypoint.gripper_action], axis=0)
 
                 # store datagen info too
                 datagen_info = env_interface.get_datagen_info(action=play_action)
