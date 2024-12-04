@@ -7,6 +7,7 @@ Defines task specification objects, which are used to store task-specific settin
 for data generation.
 """
 import json
+import pdb
 
 import mimicgen
 from mimicgen.datagen.selection_strategy import assert_selection_strategy_exists
@@ -119,7 +120,7 @@ class MG_TaskSpec:
         return task_spec
 
     @classmethod
-    def from_json_bimanual(cls, json_string=None, json_dict=None):
+    def from_json_bimanual_v2(cls, json_string=None, json_dict=None):
         """
         The bimanual cusomization of the from_json method
 
@@ -162,6 +163,56 @@ class MG_TaskSpec:
                 task_spec.add_bimanual_subtask(**json_dict[subtask_name])
         return task_spec
 
+    @classmethod
+    def from_json_bimanual(cls, json_string=None, json_dict=None):
+        """
+        The bimanual cusomization of the from_json method
+
+        TODO: now the config is not compatible with @serialize, since it is not under the index of subtask_1, subtask_2, ... 
+        Instantiate a TaskSpec object from a json string. This should
+        be consistent with the output of @serialize.
+
+        Args:
+            json_string (str): top-level of json is based on 'arm_left' and 'arm_right' keys
+            Under each arm key, there should be a key per subtask in-order (e.g.
+                "subtask_1", "subtask_2", "subtask_3") and under each subtask, there should
+                be an entry for each argumesubtask_term_signalnt of @add_subtask
+
+            json_dict (dict): optionally directly pass json dict
+        """
+
+        # currently matching v3 config, with phase in the subtask setting
+        # config architecture
+        # - phase_1
+        #   - arm_left
+        #     - subtask_1
+        #     - subtask_2
+        #     - ...
+        #   - arm_right
+        #     - subtask_1
+        #     - subtask_2
+        #     - ...
+
+        # TODO: this class does not seem necessary 
+        if json_dict is None:
+            json_dict = json.loads(json_string)
+        
+        pdb.set_trace()
+        task_spec = cls()
+        num_phases = len(json_dict)
+        for phase_index in range(num_phases):
+            phase_json_dict = json_dict['phase_{}'.format(phase_index+1)]
+            task_spec.spec.append([]) # for each phase
+            
+            for json_dict_arm in [phase_json_dict['arm_left'], phase_json_dict['arm_right']]:
+                task_spec.spec[-1].append([])
+                for subtask_name in json_dict_arm:
+                    if json_dict_arm[subtask_name]["subtask_term_offset_range"] is not None:
+                        json_dict_arm[subtask_name]["subtask_term_offset_range"] = tuple(json_dict_arm[subtask_name]["subtask_term_offset_range"])  
+                    task_spec.add_bimanual_subtask(**json_dict_arm[subtask_name])
+
+        return task_spec
+    
     def add_bimanual_subtask(self, 
         object_ref,
         subtask_term_signal,
@@ -228,7 +279,8 @@ class MG_TaskSpec:
         assert len(subtask_term_offset_range) == 2
         assert subtask_term_offset_range[0] <= subtask_term_offset_range[1]
         assert_selection_strategy_exists(selection_strategy)
-        self.spec[-1].append(dict(
+        # TODO: now it is only compatible when phase exist; if phase not exist, change to self.spec[-1].append()
+        self.spec[-1][-1].append(dict(
             object_ref=object_ref,
             subtask_term_signal=subtask_term_signal,
             subtask_term_step=subtask_term_step,

@@ -10,6 +10,7 @@ import numpy as np
 import omnigibson as og
 import omnigibson.utils.transform_utils as T
 from omnigibson.object_states import *
+from omnigibson.utils.control_utils import orientation_error
 
 from mimicgen.env_interfaces.base import MG_EnvInterface
 from mimicgen.datagen.datagen_info import DatagenInfo
@@ -496,13 +497,19 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
 
             action[self.arm_command_start_idx[arm_name]:self.arm_command_end_idx[arm_name]] = arm_command
 
+        # fill in the no operation actions for the base and camera
+        for name, controller in self.robot._controllers.items():
+            if name == 'base' or name == 'camera':
+                partial_action = controller.compute_no_op_action(self.robot.get_control_dict())
+                action_idx = self.robot.controller_action_idx[name]
+                action[action_idx] = partial_action
+
         # Convert to numpy tensor
         action = action.numpy()
 
         return action
 
-
-    def target_pose_to_action_og(self, target_pose, relative=True):
+    def target_pose_to_action_no_unprocess(self, target_pose, relative=True):
         """
         Takes a target pose for the end effector controller (in the world frame) and returns an action
         (usually a normalized delta pose action in the robot frame) to try and achieve that target pose.
@@ -546,14 +553,82 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
 
             # Assemble the arm command and undo the preprocessing
             arm_command = th.cat([dpos, dori])
-            arm_command = self._undo_preprocess_command(arm_command, arm_name)
-
 
             action[self.arm_command_start_idx[arm_name]:self.arm_command_end_idx[arm_name]] = arm_command
+
+        # fill in the no operation actions for the base and camera
+        for name, controller in self.robot._controllers.items():
+            if name == 'base' or name == 'camera':
+                partial_action = controller.compute_no_op_action(self.robot.get_control_dict())
+                action_idx = self.robot.controller_action_idx[name]
+                action[action_idx] = partial_action
 
         # Convert to numpy tensor
         action = action.numpy()
 
+        return action
+
+    def generate_action(self, target_pose):
+        """
+        Generate a no-op action that will keep the robot still but aim to move the arms to the saved pose targets, if possible
+
+        Returns:
+            th.tensor or None: Action array for one step for the robot to do nothing
+        """
+        # change to quaternion 
+        # 
+
+        # Ensure float32
+        target_pose = target_pose.astype(np.float32)
+
+        # Convert to torch tensor
+        target_pose = th.from_numpy(target_pose)
+        target_pose_dict = {}
+        target_pose_dict["left"] = T.mat2pose(target_pose[:4,:]) # T.mat2pose(target_pose)
+        target_pose_dict["right"] = T.mat2pose(target_pose[4:,:])
+        
+        arm_targets = {
+            'arm_left': (target_pose_dict["left"][0], target_pose_dict["left"][1], 0),
+            'arm_right': (target_pose_dict["right"][0], target_pose_dict["right"][1], 0),
+        }
+
+        action = th.zeros(self.robot.action_dim)
+        for name, controller in self.robot._controllers.items():
+            # if desired arm targets are available, generate an action that moves the arms to the saved pose targets
+            if name in arm_targets:
+                arm = name.replace("arm_", "")
+                # change to robot base frame
+                target_pos, target_orn, gripper_state = arm_targets[name] # in world fixed frame
+
+                current_pos, current_orn = self.robot.get_eef_pose(arm)
+                if target_orn is None:
+                    target_orn = current_orn
+                if target_pos is None:
+                    target_pos = current_pos
+                arm_targets[name] = (target_pos, target_orn, gripper_state)
+
+                delta_pos = target_pos - current_pos
+                # delta_orn = orientation_error(T.quat2mat(T.axisangle2quat(target_orn_axisangle)), T.quat2mat(current_orn))
+                delta_orn = orientation_error(T.quat2mat(target_orn), T.quat2mat(current_orn))
+                partial_action = th.cat((delta_pos, delta_orn))
+            else:
+                partial_action = controller.compute_no_op_action(self.robot.get_control_dict())
+            action_idx = self.robot.controller_action_idx[name]
+            action[action_idx] = partial_action
+
+            # set the gripper no operation action to 0
+            action[11] = 0
+            action[-1] = 0
+        
+        # bug: change to robot base frame
+
+        # Convert to numpy tensor
+        action = action.numpy()
+        print('generated action')
+        print('arm left')
+        print(action[5:12])
+        print('arm right')
+        print(action[12:19])
         return action
 
     def action_to_target_pose(self, action, relative=True):
@@ -612,11 +687,12 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
         new_action[:5] = action[:5]
 
         # import pdb; pdb.set_trace()
-        # print('new_action', new_action)
-        # print('action', action)
-        # print(th.isclose(action, th.from_numpy(new_action), atol=1e-2))
+        print('new_action', new_action)
+        print('action', action)
+        print(th.isclose(action, th.from_numpy(new_action), atol=1e-2))
         # @new_action has one less element than @action because it doesn't have the gripper actuation
         assert th.allclose(action, th.from_numpy(new_action), atol=1e-2)
+
 
         return target_pose
 
@@ -780,6 +856,10 @@ class MG_TestTiagoCup(OmniGibsonInterfaceBimanual):
 
         # TODO: need to check why the grasp signal can be -1 before 1
         # TODO: the current setup cannot handle arm role change
+        # TODO: need to be changed
+        # TRUE = 1
+        # UNKNOWN = 0
+        # FALSE = -1
         signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"])))
         signals["ungrasp_right"] = abs(1 - abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"]))))
 

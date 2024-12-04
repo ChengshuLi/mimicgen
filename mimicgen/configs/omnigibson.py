@@ -192,7 +192,7 @@ class TestTiagoGiftbox(MG_Config):
         # allow downstream code to completely replace the task spec from an external config
         self.task.task_spec.do_not_lock_keys()
 
-
+# TODO: need to delete
 class TestTiagoCup(MG_Config):
     """
     Corresponds to OG TestCabinet and variants.

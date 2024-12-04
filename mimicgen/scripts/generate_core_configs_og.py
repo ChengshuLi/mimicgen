@@ -161,17 +161,7 @@ def make_generator(config_file, settings):
             group=0,
             base_config_file=config_file,
             select_src_per_subtask=settings["select_src_per_subtask"],
-            # subtask_term_offset_range=settings["subtask_term_offset_range"],
-            # selection_strategy=settings.get("selection_strategy", None),
-            # selection_strategy_kwargs=settings.get("selection_strategy_kwargs", None),
-            # # default settings: action noise 0.05, with 5 interpolation steps
-            # # Disable any action noise for now
-            # # action_noise=0.05,
-            # action_noise=0.0,
-            # num_interpolation_steps=5,
-            # num_fixed_steps=0,
             verbose=False,
-            # arm=False,
         )
     else:
         ConfigUtils.set_subtask_settings(

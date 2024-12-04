@@ -16,6 +16,7 @@ import tempfile
 import gdown
 import numpy as np
 import copy
+import pdb
 
 from glob import glob
 from tqdm import tqdm
@@ -262,41 +263,53 @@ def parse_source_dataset_bimanual(
 
         subtask_term_offset_ranges (list): sequence of subtask termination offset ranges
     """
+
+    # get saved data information
+
+    f = h5py.File(dataset_path, "r")
+
+    datagen_infos = []
+    subtask_indices = []
+    demo_lens = []
+    for ind in tqdm(range(len(demo_keys))):
+        ep = demo_keys[ind]
+        ep_grp = f["data/{}".format(ep)]
+
+        # extract datagen info
+        ep_datagen_info = ep_grp["datagen_info"]
+        ep_datagen_info_obj = DatagenInfo(
+            eef_pose=ep_datagen_info["eef_pose"][:],
+            object_poses={ k : ep_datagen_info["object_poses"][k][:] for k in ep_datagen_info["object_poses"] },
+            subtask_term_signals={ k : ep_datagen_info["subtask_term_signals"][k][:] for k in ep_datagen_info["subtask_term_signals"] },
+            target_pose=ep_datagen_info["target_pose"][:],
+            gripper_action=ep_datagen_info["gripper_action"][:],
+        )
+        datagen_infos.append(ep_datagen_info_obj)
+        # OG uses "action" rather than "actions"
+        action = ep_grp["actions"] if "actions" in ep_grp else ep_grp["action"]
+        num_steps = action.shape[0]
+        demo_lens.append(num_steps)
+
+    f.close()
+
+    # get subtask info
     task_spec_all = copy.deepcopy(task_spec)
 
-    def get_arm_spec_info(task_spec, demo_keys):
+    def get_arm_spec_info(task_spec, demo_keys, demo_lens, prev_subtask_term_ind):
         # checking for each arm 
 
         subtask_term_signals = [subtask_spec["subtask_term_signal"] for subtask_spec in task_spec]
         subtask_term_offset_ranges = [subtask_spec["subtask_term_offset_range"] for subtask_spec in task_spec]
 
         assert len(subtask_term_signals) == len(subtask_term_offset_ranges)
-        assert subtask_term_signals[-1] is None, "end of final subtask does not need to be detected"
         assert (subtask_term_offset_ranges[-1] is None) or (subtask_term_offset_ranges[-1] == (0, 0)), "end of final subtask does not need to be detected"
         subtask_term_offset_ranges[-1] = (0, 0)
 
-        f = h5py.File(dataset_path, "r")
-
-        datagen_infos = []
         subtask_indices = []
         for ind in tqdm(range(len(demo_keys))):
-            ep = demo_keys[ind]
-            ep_grp = f["data/{}".format(ep)]
-
-            # extract datagen info
-            ep_datagen_info = ep_grp["datagen_info"]
-            ep_datagen_info_obj = DatagenInfo(
-                eef_pose=ep_datagen_info["eef_pose"][:],
-                object_poses={ k : ep_datagen_info["object_poses"][k][:] for k in ep_datagen_info["object_poses"] },
-                subtask_term_signals={ k : ep_datagen_info["subtask_term_signals"][k][:] for k in ep_datagen_info["subtask_term_signals"] },
-                target_pose=ep_datagen_info["target_pose"][:],
-                gripper_action=ep_datagen_info["gripper_action"][:],
-            )
-            datagen_infos.append(ep_datagen_info_obj)
 
             # parse subtask indices using subtask termination signals
             ep_subtask_indices = []
-            prev_subtask_term_ind = 0
             for subtask_ind in range(len(subtask_term_signals)):
                 subtask_term_signal = subtask_term_signals[subtask_ind]
                 subtask_term_step = task_spec[subtask_ind]["subtask_term_step"]
@@ -304,17 +317,8 @@ def parse_source_dataset_bimanual(
                 if subtask_term_signal is None:
                     # final subtask, finishes at end of demo
                     # OG uses "action" rather than "actions"
-                    action = ep_grp["actions"] if "actions" in ep_grp else ep_grp["action"]
-                    subtask_term_ind = action.shape[0]
+                    subtask_term_ind = demo_lens[ind]
                 else:
-                    # trick to detect index where first 0 -> 1 transition occurs - this will be the end of the subtask
-                    # TODO: okay, example: for grasp action, the index is the step at the end of the grasp action, right before ungrasp the object, this is not what we want, especially when the start and the end of contact will make a difference and when something will happen during the grasp range. need to detect based on provide steps
-                    ## the following is the legacy code
-                    # subtask_indicators = ep_datagen_info_obj.subtask_term_signals[subtask_term_signal]
-                    # diffs = subtask_indicators[1:] - subtask_indicators[:-1]
-                    # end_ind = int(diffs.nonzero()[0][0]) + 1
-                    # subtask_term_ind = end_ind + 1 # increment to support indexing like demo[start:end]
-                    ## the following is the new code, directly reading the steps from the task spec
                     subtask_term_ind = subtask_term_step
                 ep_subtask_indices.append([prev_subtask_term_ind, subtask_term_ind])
                 prev_subtask_term_ind = subtask_term_ind
@@ -337,27 +341,38 @@ def parse_source_dataset_bimanual(
 
         # convert list of lists to array for easy indexing
         subtask_indices = np.array(subtask_indices)
-        f.close()
 
         print('before enfing of parsing the dataset')
-        return subtask_indices, subtask_term_signals, subtask_term_offset_ranges, datagen_infos
+        return subtask_indices, subtask_term_signals, subtask_term_offset_ranges, prev_subtask_term_ind
     
-    subtask_indices_l, subtask_term_signals_l, subtask_term_offset_ranges_l, datagen_infos = get_arm_spec_info(task_spec_all[0], demo_keys)
-    subtask_indices_r, subtask_term_signals_r, subtask_term_offset_ranges_r, _ = get_arm_spec_info(task_spec_all[1], demo_keys)
-
     subtask_indices = []
-    subtask_indices.append(subtask_indices_l)
-    subtask_indices.append(subtask_indices_r)
-
     subtask_term_signals = []
-    subtask_term_signals.append(subtask_term_signals_l)
-    subtask_term_signals.append(subtask_term_signals_r)
-
     subtask_term_offset_ranges = []
-    subtask_term_offset_ranges.append(subtask_term_offset_ranges_l)
-    subtask_term_offset_ranges.append(subtask_term_offset_ranges_r)
+    prev_subtask_term_ind = 0
+    num_phases = len(task_spec_all)
+    for phase_index in range(num_phases):
+        task_spec = task_spec_all[phase_index]
+        
+        subtask_indices_l, subtask_term_signals_l, subtask_term_offset_ranges_l, prev_subtask_term_ind_l = get_arm_spec_info(task_spec[0], demo_keys, demo_lens, prev_subtask_term_ind)
+        subtask_indices_r, subtask_term_signals_r, subtask_term_offset_ranges_r, prev_subtask_term_ind_r= get_arm_spec_info(task_spec[1], demo_keys, demo_lens, prev_subtask_term_ind)
+
+        assert prev_subtask_term_ind_l == prev_subtask_term_ind_r # the end point of phase for both arms should be the same
+        prev_subtask_term_ind = prev_subtask_term_ind_l
+
+        subtask_indices.append([])
+        subtask_indices[-1].append(subtask_indices_l)
+        subtask_indices[-1].append(subtask_indices_r)
+
+        subtask_term_signals.append([])
+        subtask_term_signals[-1].append(subtask_term_signals_l)
+        subtask_term_signals[-1].append(subtask_term_signals_r)
+
+        subtask_term_offset_ranges.append([])
+        subtask_term_offset_ranges[-1].append(subtask_term_offset_ranges_l)
+        subtask_term_offset_ranges[-1].append(subtask_term_offset_ranges_r)
     
     return datagen_infos, subtask_indices, subtask_term_signals, subtask_term_offset_ranges
+
 
 def write_demo_to_hdf5(
     folder,

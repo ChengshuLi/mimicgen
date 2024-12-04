@@ -8,6 +8,7 @@ Base class for data generator.
 import h5py
 import sys
 import numpy as np
+import pdb
 
 import mimicgen
 import mimicgen.utils.pose_utils as PoseUtils
@@ -47,13 +48,16 @@ class DataGenerator(object):
         self.bimanual = bimanual
 
         if self.bimanual:
+            self.num_phases = len(self.task_spec)
             # sanity check on task spec offset ranges - final subtask should not have any offset randomization
-            # for left arm
-            assert self.task_spec[0][-1]["subtask_term_offset_range"][0] == 0
-            assert self.task_spec[0][-1]["subtask_term_offset_range"][1] == 0
-            # for right arm
-            assert self.task_spec[1][-1]["subtask_term_offset_range"][0] == 0
-            assert self.task_spec[1][-1]["subtask_term_offset_range"][1] == 0
+            for phase_index in range(self.num_phases):
+                phase_spec = self.task_spec[phase_index]
+                # for left arm
+                assert phase_spec[0][-1]["subtask_term_offset_range"][0] == 0
+                assert phase_spec[0][-1]["subtask_term_offset_range"][1] == 0
+                # for right arm
+                assert phase_spec[1][-1]["subtask_term_offset_range"][0] == 0
+                assert phase_spec[1][-1]["subtask_term_offset_range"][1] == 0
 
         else:
             # sanity check on task spec offset ranges - final subtask should not have any offset randomization
@@ -310,43 +314,27 @@ class DataGenerator(object):
         )
         for _ in range(5): og.sim.render()
 
-
-        # TODO: okay here actually the length of each subtask is randomized
-        # example output, all_subtask_inds = array([[[  0, 106], [106, 187]]])
+        # after changing the phase structure, 
+        # self.src_subtask_indices
+        # [
+        # [array([[[  0, 300],
+        # [300, 650]]]), array([[[  0, 350],
+        # [350, 650]]])], 
+        # [array([[[650, 992]]]), array([[[650, 992]]])]
+        # ]
 
         # sample new subtask boundaries
-        all_subtask_inds_left = self.randomize_subtask_boundaries(self.src_subtask_indices[0], self.task_spec[0]) # shape [N, S, 2], last dim is start and end action lengths
-        all_subtask_inds_right = self.randomize_subtask_boundaries(self.src_subtask_indices[1], self.task_spec[1]) # shape [N, S, 2], last dim is start and end action lengths
+        all_subtask_inds_structure = []
+        for phase_index in range(self.num_phases):
+            all_subtask_inds_structure.append([])
+            for arm_i in range(2): # arm_left, arm_right
+                all_subtask_inds_arm = self.randomize_subtask_boundaries(self.src_subtask_indices[phase_index][arm_i], self.task_spec[phase_index][arm_i]) # shape (1,2,2)
+                all_subtask_inds_structure[-1].append(all_subtask_inds_arm)
 
-        # TODO: now hardcode the structure
-        inds_structure = [
-            {
-                'type': 'uncoordinated', # phase 1
-                'arm_left': self.task_spec[0][:2],
-                'arm_right': self.task_spec[1][:2],
-            },
-            {
-                'type': 'uncoordinated',
-                'arm_left': self.task_spec[0][2:],
-                'arm_right': self.task_spec[1][2:]
-            },
-        ]
-
-        all_subtask_inds_structure = [
-            {
-                'arm_left': all_subtask_inds_left[:, :2],
-                'arm_right': all_subtask_inds_right[:,:2]
-            },
-            {
-                'arm_left': all_subtask_inds_left[:,2:],
-                'arm_right': all_subtask_inds_right[:,2:]
-            },
-        ]
-
-        len_phases = len(inds_structure)
-
-        all_subtask_inds = all_subtask_inds_left
-        arm_index = 0 # left arm
+        # (Pdb) p all_subtask_inds_structure
+        # [[array([[[  0, 309],
+        # [309, 650]]]), array([[[  0, 360],
+        # [360, 650]]])], [array([[[650, 992]]]), array([[[650, 992]]])]]
 
         # some state variables used during generation
         selected_src_demo_ind = None
@@ -362,28 +350,24 @@ class DataGenerator(object):
         generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
 
         # for left arms first
+        for phase_ind in range(self.num_phases):
+            cur_phase_task_spec = self.task_spec[phase_ind]
 
-        for phase_ind in range(len_phases):
-            cur_phase_task_spec = inds_structure[phase_ind]
-            phase_type = cur_phase_task_spec['type']
-            
             # for left arm
-            arm_index = 'arm_left'
             traj_list_all = [[],[]]
-            for arm_i, arm_index in enumerate(['arm_left', 'arm_right']):
-
-                local_task_spec = self.task_spec[arm_i]
-                all_subtask_inds = all_subtask_inds_structure[phase_ind][arm_index]
-                for subtask_ind in range(len(cur_phase_task_spec[arm_index])):
+            for arm_i, arm_name in enumerate(['arm_left', 'arm_right']):
+                local_task_spec = cur_phase_task_spec[arm_i]
+                all_subtask_inds = all_subtask_inds_structure[phase_ind][arm_i]
+                for subtask_ind in range(len(cur_phase_task_spec[arm_i])):
                     print('=====================')
-                    print('arm_index:', arm_index, 'subtask_ind:', subtask_ind)
+                    print('arm_name:', arm_name, 'subtask_ind:', subtask_ind)
                     
                     #### get reference object and trajectory information 
 
                     is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
                     cur_datagen_info = env_interface.get_datagen_info()
 
-                    subtask_object_name = cur_phase_task_spec[arm_index][subtask_ind]["object_ref"]
+                    subtask_object_name = cur_phase_task_spec[arm_i][subtask_ind]["object_ref"]
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
                     print('subtask_object_name', subtask_object_name)
 
@@ -398,11 +382,11 @@ class DataGenerator(object):
                     src_subtask_target_poses = src_ep_datagen_info.target_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
                     src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
-                    if arm_index == 'arm_left':
+                    if arm_name == 'arm_left':
                         src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
                         src_subtask_target_poses = src_subtask_target_poses[:,:4,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
-                    elif arm_index == 'arm_right':
+                    elif arm_name == 'arm_right':
                         src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
                         src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
@@ -455,19 +439,19 @@ class DataGenerator(object):
                     #     init_sequence = WaypointSequence(sequence=[last_waypoint])
                     # else:
                     if True:
-                        if arm_index == 'arm_left':
+                        if arm_name == 'arm_left':
                             # Interpolation segment will start from current robot eef pose.
                             init_sequence = WaypointSequence.from_poses(
                                 poses=cur_datagen_info.eef_pose[None][:,:4,:], # 1 x 8 x 4
                                 gripper_actions=src_subtask_gripper_actions[0:1],
-                                action_noise=self.task_spec[0][subtask_ind]["action_noise"],
+                                action_noise=cur_phase_task_spec[0][subtask_ind]["action_noise"],
                             )
-                        elif arm_index == 'arm_right':
+                        elif arm_name == 'arm_right':
                             # Interpolation segment will start from current robot eef pose.
                             init_sequence = WaypointSequence.from_poses(
                                 poses=cur_datagen_info.eef_pose[None][:,4:,:], # 1 x 4 x 4
                                 gripper_actions=src_subtask_gripper_actions[0:1],
-                                action_noise=self.task_spec[1][subtask_ind]["action_noise"],
+                                action_noise=cur_phase_task_spec[1][subtask_ind]["action_noise"],
                             )
 
                     print('init_sequence[0].pose.shape', init_sequence[0].pose.shape) # 4 x 4

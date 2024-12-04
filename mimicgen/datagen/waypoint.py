@@ -419,20 +419,26 @@ class WaypointTrajectory(object):
                         env.eef_goal_marker_left.set_position_orientation(position=waypoint.pose[0:3, 3])
                     if env.eef_goal_marker_right is not None:
                         env.eef_goal_marker_right.set_position_orientation(position=waypoint.pose[4:7, 3])
+                    # TODO: add debug component when the phase changes, maybe not needed
                 else:
                     # single arm setting
                     if env.eef_current_marker is not None:
                         env.eef_current_marker.set_position_orientation(position=env.env.robots[0].get_eef_position())
                     if env.eef_goal_marker is not None:
                         env.eef_goal_marker.set_position_orientation(position=waypoint.pose[0:3, 3])
-                # pdb.set_trace()
+                
                 # convert target pose to arm action
+                # TODO: the postprocessing will make tha action too large and could cause the drifting problem
                 action_pose = env_interface.target_pose_to_action(target_pose=waypoint.pose)
+                # action_pose = env_interface.target_pose_to_action_no_unprocess(target_pose=waypoint.pose)     
+                # action_pose = env_interface.generate_action(target_pose=waypoint.pose)           
 
                 # maybe add noise to action
                 if waypoint.noise is not None:
                     action_pose += waypoint.noise * np.random.randn(*action_pose.shape)
-                    action_pose = np.clip(action_pose, -1., 1.)
+                
+                # TODO: the action_pose clip here is important, without this clip the get_datagen_info will raise error when the right hand is in contact with the coffee cup even with all the preprocess and pose process
+                action_pose = np.clip(action_pose, -1., 1.)
 
                 if action_pose.shape[0] == 19:
                     # bimanual setting

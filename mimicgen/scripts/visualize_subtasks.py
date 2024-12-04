@@ -313,7 +313,7 @@ def visualize_subtasks(args):
         ep_grp = f["data/{}".format(ep)]
         print("Playing back episode: {}".format(ep))
         if args.use_obs:
-            visualize_trajectory_with_obs(
+            visualize_subtasks_with_obs(
                 traj_grp=ep_grp,
                 subtask_end_indices=subtask_end_indices[ind],
                 video_writer=video_writer,
