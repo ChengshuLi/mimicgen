@@ -501,6 +501,7 @@ class DataGenerator(object):
                 video_writer=video_writer,
                 video_skip=video_skip,
                 camera_names=camera_names,
+                bimanual=self.bimanual,
             )
 
             # check that trajectory is non-empty
@@ -681,7 +682,7 @@ class DataGenerator(object):
 
             # Transform source demonstration segment using relevant object pose.
             if subtask_object_name is not None:
-                if src_eef_poses.shape[1] == 8:
+                if self.bimanual:
                     # the bimanual setting
                     # src_eef_poses, [num_steps, 8, 4]
                     transformed_eef_poses_left = PoseUtils.transform_source_data_segment_using_object_pose(obj_pose=cur_object_pose, src_eef_poses=src_eef_poses[:,:4,:],src_obj_pose=src_subtask_object_pose)

@@ -224,7 +224,7 @@ class WaypointTrajectory(object):
             # repeat the target @num_steps times
             assert num_steps is not None
             poses = np.array([pose for _ in range(num_steps)])
-            gripper_actions = np.array([[gripper] for _ in range(num_steps)])
+            gripper_actions = np.array([[gripper_action] for _ in range(num_steps)])
         else:
             # linearly interpolate between the last pose and the new waypoint
             last_waypoint = self.last_waypoint
@@ -349,6 +349,7 @@ class WaypointTrajectory(object):
         video_writer=None, 
         video_skip=5, 
         camera_names=None,
+        bimanual=False,
     ):
         """
         Main function to execute the trajectory. Will use env_interface.target_pose_to_action to
@@ -408,7 +409,7 @@ class WaypointTrajectory(object):
                 state = env.get_state()["states"]
                 obs = env.get_observation()
 
-                if waypoint.pose.shape[0] == 8:
+                if bimanual:
                     # bimanual setting
                     # TODO: change the logic based on bimanual indicator
                     if env.eef_current_marker_left is not None:
@@ -440,9 +441,8 @@ class WaypointTrajectory(object):
                 # TODO: the action_pose clip here is important, without this clip the get_datagen_info will raise error when the right hand is in contact with the coffee cup even with all the preprocess and pose process
                 action_pose = np.clip(action_pose, -1., 1.)
 
-                if action_pose.shape[0] == 19:
+                if bimanual:
                     # bimanual setting
-                    # TODO: change the logic based on bimanual indicator
                     play_action = copy.deepcopy(action_pose)
                     play_action[env_interface.gripper_action_dim] = waypoint.gripper_action
                 else:

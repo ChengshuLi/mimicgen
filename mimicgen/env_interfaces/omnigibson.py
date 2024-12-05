@@ -492,7 +492,12 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
 
             # Assemble the arm command and undo the preprocessing
             arm_command = th.cat([dpos, dori])
+
+            # print('before arm_command')
+            # print(arm_command)
             arm_command = self._undo_preprocess_command(arm_command, arm_name)
+            # print('after undo preprossing arm_command')
+            # print(arm_command)
 
 
             action[self.arm_command_start_idx[arm_name]:self.arm_command_end_idx[arm_name]] = arm_command
@@ -687,9 +692,10 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
         new_action[:5] = action[:5]
 
         # import pdb; pdb.set_trace()
-        print('new_action', new_action)
-        print('action', action)
-        print(th.isclose(action, th.from_numpy(new_action), atol=1e-2))
+        #print('new_action', new_action)
+        #print('action', action)
+        #print(th.isclose(action, th.from_numpy(new_action), atol=1e-2))
+
         # @new_action has one less element than @action because it doesn't have the gripper actuation
         assert th.allclose(action, th.from_numpy(new_action), atol=1e-2)
 
