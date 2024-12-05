@@ -195,6 +195,7 @@ class WaypointTrajectory(object):
         num_steps,
         skip_interpolation=False,
         action_noise=0.,
+        bimanual=False,
     ):
         """
         Adds a new waypoint sequence corresponding to a desired target pose. A new WaypointSequence
@@ -229,6 +230,7 @@ class WaypointTrajectory(object):
             # linearly interpolate between the last pose and the new waypoint
             last_waypoint = self.last_waypoint
             if last_waypoint.pose.shape[0] == 8:
+                # here is when transforming the two arms altogher, should be corresponding to the bimanual-coordinated phase
                 poses_left, num_steps_2_left = PoseUtils.interpolate_poses(
                     pose_1=last_waypoint.pose[0:4, :],
                     pose_2=pose[0:4, :],
@@ -243,6 +245,7 @@ class WaypointTrajectory(object):
                 assert num_steps_2_left == num_steps_2_right
                 num_steps_2 = num_steps_2_left
             else:
+                # suitable for single arm transformation
                 poses, num_steps_2 = PoseUtils.interpolate_poses(
                     pose_1=last_waypoint.pose,
                     pose_2=pose,
@@ -285,6 +288,7 @@ class WaypointTrajectory(object):
         num_steps_interp=None,
         num_steps_fixed=None,
         action_noise=0.,
+        bimanual=False,
     ):
         """
         Merge this trajectory with another (@other).
@@ -320,6 +324,7 @@ class WaypointTrajectory(object):
                     num_steps=num_steps_interp,
                     action_noise=action_noise,
                     skip_interpolation=False,
+                    bimanual=bimanual,
                 )
 
             if need_fixed:
@@ -333,6 +338,7 @@ class WaypointTrajectory(object):
                     num_steps=num_steps_fixed_to_use,
                     action_noise=action_noise,
                     skip_interpolation=True,
+                    bimanual=bimanual,
                 )
 
             # make sure to preserve noise from first element of other trajectory

@@ -117,7 +117,7 @@
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
                         "action_noise": 0.0,
-                        "num_interpolation_steps": 5,
+                        "num_interpolation_steps": 50,
                         "num_fixed_steps": 0,
                         "apply_noise_during_interpolation": false
                     }
@@ -132,7 +132,7 @@
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
                         "action_noise": 0.0,
-                        "num_interpolation_steps": 5,
+                        "num_interpolation_steps": 50,
                         "num_fixed_steps": 0,
                         "apply_noise_during_interpolation": false
                     }

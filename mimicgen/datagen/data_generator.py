@@ -365,11 +365,18 @@ class DataGenerator(object):
                     #### get reference object and trajectory information 
 
                     is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
+                    is_first_subtask_in_phase = (subtask_ind == 0)
                     cur_datagen_info = env_interface.get_datagen_info()
 
                     subtask_object_name = cur_phase_task_spec[arm_i][subtask_ind]["object_ref"]
+
+                    # TODO: if not is_first_subtask_in_phase, the object pose may change if the subtask trajectory is executed, so using the current object pose to transform the trajectory is not correct
+                    # option 1: need to recalculate the target object pose based on eef pose
+                    # option 2: simulate the trajectory in another environment
+                    # option 3: change the logic, record the transformation, not the transformed pose
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
                     print('subtask_object_name', subtask_object_name)
+                    print('cur_object_pose', cur_object_pose.shape)
 
                     need_source_demo_selection = (is_first_subtask or select_src_per_subtask)
                     selected_src_demo_ind = 0 # TODO: since we only have one demo, now it is hardcoded, will need to modify if more demos are available
@@ -402,7 +409,7 @@ class DataGenerator(object):
                         # TODO: not sure about the meaning of this; need to check the first dimension is 1 more
                         src_eef_poses = np.concatenate([src_subtask_eef_poses[0:1], src_subtask_target_poses], axis=0) # 107 x 8 x 4
                     else:
-                        # Source segment consiseef_posets of just the target poses.
+                        # Source segment consists of just the target poses.
                         src_eef_poses = np.array(src_subtask_target_poses)
 
                     # account for extra timestep added to @src_eef_poses
@@ -429,16 +436,18 @@ class DataGenerator(object):
 
                     # TODO: change the interpolation to curobo motion planner
 
-                    # TODO: since we did not execute the subtask within each phase
-                    # if interpolate_from_last_target_pose and (not is_first_subtask):
-                    #     # Interpolation segment will start from last target pose (which may not have been achieved).
-                    #     import pdb; pdb.set_trace()
-                    #     #TODO: need to check the interpolation here
-                    #     assert prev_executed_traj is not None
-                    #     last_waypoint = prev_executed_traj.last_waypoint
-                    #     init_sequence = WaypointSequence(sequence=[last_waypoint])
-                    # else:
-                    if True:
+                    if interpolate_from_last_target_pose and (not is_first_subtask_in_phase):
+                        # Interpolation segment will start from last target pose (which may not have been achieved).
+
+                        # TODO: since we did not execute the subtask within each phase, the assettion will fail -> remove the assertion
+                        # assert prev_executed_traj is not None 
+                        # last_waypoint = prev_executed_traj.last_waypoint
+
+                        # instead, we get the last waypoint from the last subtask
+                        last_waypoint = traj_list_all[arm_i][-1].last_waypoint
+                        init_sequence = WaypointSequence(sequence=[last_waypoint])
+                    else:
+                    # if True:
                         if arm_name == 'arm_left':
                             # Interpolation segment will start from current robot eef pose.
                             init_sequence = WaypointSequence.from_poses(
@@ -474,6 +483,7 @@ class DataGenerator(object):
                         num_steps_interp=local_task_spec[subtask_ind]["num_interpolation_steps"],
                         num_steps_fixed=local_task_spec[subtask_ind]["num_fixed_steps"],
                         action_noise=(float(local_task_spec[subtask_ind]["apply_noise_during_interpolation"]) * local_task_spec[subtask_ind]["action_noise"]),
+                        bimanual=self.bimanual
                     )
 
                     # We initialized @traj_to_execute with a pose to allow @merge to handle linear interpolation
