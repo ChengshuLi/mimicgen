@@ -205,8 +205,8 @@ class DataGenerator(object):
         return selected_src_demo_ind
 
     def merge_trajs(self, traj_list_all):
-        # TODO: need to merge different arms' sequences to one before execution
         # merge the waypoints for each arm
+        print('#################### in merge trajectories ####################')
         
         waypoint_traj_list = []
         for i in range(2):
@@ -352,80 +352,69 @@ class DataGenerator(object):
         # for left arms first
         for phase_ind in range(self.num_phases):
             cur_phase_task_spec = self.task_spec[phase_ind]
+            selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
-            # for left arm
-            traj_list_all = [[],[]]
-            for arm_i, arm_name in enumerate(['arm_left', 'arm_right']):
-                local_task_spec = cur_phase_task_spec[arm_i]
-                all_subtask_inds = all_subtask_inds_structure[phase_ind][arm_i]
-                for subtask_ind in range(len(cur_phase_task_spec[arm_i])):
-                    print('=====================')
-                    print('arm_name:', arm_name, 'subtask_ind:', subtask_ind)
-                    
-                    #### get reference object and trajectory information 
+            # restructure subtasks indexes and reference objects
+            all_subtask_inds = all_subtask_inds_structure[phase_ind]
+            subtask_ind_vals = np.sort(np.unique(all_subtask_inds))
+            num_subtasks = len(subtask_ind_vals) - 1
+
+
+            for subtask_ind_reordered in range(num_subtasks):
+
+                selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
+                traj_list_all = [[],[]]
+
+                for arm_i, arm_name in enumerate(['arm_left', 'arm_right']):
+
+                    # need to recalculate the matched subtask_ind to retrieve the correct task spec
+                    local_task_spec = cur_phase_task_spec[arm_i]
+                    arm_spec_subtask_inds = all_subtask_inds[arm_i][0]
+                    arm_unique_subtask_inds = np.sort(np.unique(arm_spec_subtask_inds))
+                    subtask_ind = np.where(selected_src_subtask_inds[1] <= arm_unique_subtask_inds)[0][0] - 1
+
+                    print('==========================================')
+                    print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
+                    print('subtask start and end step', selected_src_subtask_inds)
+                    print('arm_spec_subtask_inds', arm_spec_subtask_inds)
 
                     is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
                     is_first_subtask_in_phase = (subtask_ind == 0)
+
                     cur_datagen_info = env_interface.get_datagen_info()
-
                     subtask_object_name = cur_phase_task_spec[arm_i][subtask_ind]["object_ref"]
-
-                    # TODO: if not is_first_subtask_in_phase, the object pose may change if the subtask trajectory is executed, so using the current object pose to transform the trajectory is not correct
-                    # option 1: need to recalculate the target object pose based on eef pose
-                    # option 2: simulate the trajectory in another environment
-                    # option 3: change the logic, record the transformation, not the transformed pose
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
                     print('subtask_object_name', subtask_object_name)
-                    print('cur_object_pose', cur_object_pose.shape)
-
-                    need_source_demo_selection = (is_first_subtask or select_src_per_subtask)
-                    selected_src_demo_ind = 0 # TODO: since we only have one demo, now it is hardcoded, will need to modify if more demos are available
-                    
-                    selected_src_subtask_inds = all_subtask_inds[selected_src_demo_ind, subtask_ind] # [start_step, end_step]
                     
                     # get poses
                     src_ep_datagen_info = self.src_dataset_infos[selected_src_demo_ind]
                     src_subtask_eef_poses = src_ep_datagen_info.eef_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
-                    src_subtask_target_poses = src_ep_datagen_info.target_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
                     src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
                     if arm_name == 'arm_left':
                         src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
-                        src_subtask_target_poses = src_subtask_target_poses[:,:4,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
                     elif arm_name == 'arm_right':
                         src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
-                        src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
 
-                    
                     # get reference object pose from source demo
-                    src_subtask_object_pose = src_ep_datagen_info.object_poses[subtask_object_name][selected_src_subtask_inds[0]] if (subtask_object_name is not None) else None # 4 x 4, TODO: okay need to make sure the object is static during the subtask?
-
-                    if is_first_subtask or transform_first_robot_pose:
-                        # Source segment consists of first robot eef pose and the target poses. This ensures that
-                        # we will interpolate to the first robot eef pose in this source segment, instead of the
-                        # first robot target pose.
-                        # TODO: not sure about the meaning of this; need to check the first dimension is 1 more
-                        src_eef_poses = np.concatenate([src_subtask_eef_poses[0:1], src_subtask_target_poses], axis=0) # 107 x 8 x 4
-                    else:
-                        # Source segment consists of just the target poses.
-                        src_eef_poses = np.array(src_subtask_target_poses)
+                    src_subtask_object_pose = src_ep_datagen_info.object_poses[subtask_object_name][selected_src_subtask_inds[0]] if (subtask_object_name is not None) else None # 4 x 4
 
                     # account for extra timestep added to @src_eef_poses
                     src_subtask_gripper_actions = np.concatenate([src_subtask_gripper_actions[0:1], src_subtask_gripper_actions], axis=0) # 107 x2
 
+                    src_eef_poses = src_subtask_eef_poses
                     # Transform source demonstration segment using relevant object pose.
                     if subtask_object_name is not None:
-                        print('cur_object_pose', cur_object_pose.shape)
-                        print('src_eef_poses', src_eef_poses.shape)
-                        print('src_subtask_object_pose', src_subtask_object_pose.shape)
+                        # print('cur_object_pose', cur_object_pose.shape)
+                        # print('src_eef_poses', src_eef_poses.shape)
+                        # print('src_subtask_object_pose', src_subtask_object_pose.shape)
                         transformed_eef_poses = PoseUtils.transform_source_data_segment_using_object_pose(
                             obj_pose=cur_object_pose, 
                             src_eef_poses=src_eef_poses,
                             src_obj_pose=src_subtask_object_pose)
                         # transformed_eef_poses = np.concatenate([transformed_eef_poses_left, transformed_eef_poses_right], axis=1)
-
                     else:
                         # skip transformation if no reference object is provided
                         transformed_eef_poses = src_eef_poses
@@ -434,36 +423,21 @@ class DataGenerator(object):
                     # that will be executed and then execute it.
                     traj_to_execute = WaypointTrajectory()
 
-                    # TODO: change the interpolation to curobo motion planner
+                    if arm_name == 'arm_left':
+                        # Interpolation segment will start from current robot eef pose.
+                        init_sequence = WaypointSequence.from_poses(
+                            poses=cur_datagen_info.eef_pose[None][:,:4,:], # 1 x 8 x 4
+                            gripper_actions=src_subtask_gripper_actions[0:1],
+                            action_noise=cur_phase_task_spec[0][subtask_ind]["action_noise"],
+                        )
+                    elif arm_name == 'arm_right':
+                        # Interpolation segment will start from current robot eef pose.
+                        init_sequence = WaypointSequence.from_poses(
+                            poses=cur_datagen_info.eef_pose[None][:,4:,:], # 1 x 4 x 4
+                            gripper_actions=src_subtask_gripper_actions[0:1],
+                            action_noise=cur_phase_task_spec[1][subtask_ind]["action_noise"],
+                        )
 
-                    if interpolate_from_last_target_pose and (not is_first_subtask_in_phase):
-                        # Interpolation segment will start from last target pose (which may not have been achieved).
-
-                        # TODO: since we did not execute the subtask within each phase, the assettion will fail -> remove the assertion
-                        # assert prev_executed_traj is not None 
-                        # last_waypoint = prev_executed_traj.last_waypoint
-
-                        # instead, we get the last waypoint from the last subtask
-                        last_waypoint = traj_list_all[arm_i][-1].last_waypoint
-                        init_sequence = WaypointSequence(sequence=[last_waypoint])
-                    else:
-                    # if True:
-                        if arm_name == 'arm_left':
-                            # Interpolation segment will start from current robot eef pose.
-                            init_sequence = WaypointSequence.from_poses(
-                                poses=cur_datagen_info.eef_pose[None][:,:4,:], # 1 x 8 x 4
-                                gripper_actions=src_subtask_gripper_actions[0:1],
-                                action_noise=cur_phase_task_spec[0][subtask_ind]["action_noise"],
-                            )
-                        elif arm_name == 'arm_right':
-                            # Interpolation segment will start from current robot eef pose.
-                            init_sequence = WaypointSequence.from_poses(
-                                poses=cur_datagen_info.eef_pose[None][:,4:,:], # 1 x 4 x 4
-                                gripper_actions=src_subtask_gripper_actions[0:1],
-                                action_noise=cur_phase_task_spec[1][subtask_ind]["action_noise"],
-                            )
-
-                    print('init_sequence[0].pose.shape', init_sequence[0].pose.shape) # 4 x 4
                     traj_to_execute.add_waypoint_sequence(init_sequence)
 
                     # Construct trajectory for the transformed segment.
@@ -491,6 +465,7 @@ class DataGenerator(object):
                     # the rest of the trajectory (interpolation segment and transformed subtask segment).
                     traj_to_execute.pop_first()
 
+                    print('*****************************')
                     print('finished processing one subtask for one arm')
                     print('num sequences:', len(traj_to_execute.waypoint_sequences))
                     for seq in traj_to_execute.waypoint_sequences:
@@ -498,21 +473,21 @@ class DataGenerator(object):
                 
                     traj_list_all[arm_i].append(traj_to_execute)
                 
-            traj_to_execute = self.merge_trajs(traj_list_all)
+                traj_to_execute = self.merge_trajs(traj_list_all)
 
-            # only execute after phase is reached
-            import pdb; pdb.set_trace()
-      
-            # Execute the trajectory and collect data.
-            exec_results = traj_to_execute.execute(
-                env=env,
-                env_interface=env_interface,
-                render=render,
-                video_writer=video_writer,
-                video_skip=video_skip,
-                camera_names=camera_names,
-                bimanual=self.bimanual,
-            )
+                # now still execute each subtask separately
+                import pdb; pdb.set_trace()
+        
+                # Execute the trajectory and collect data.
+                exec_results = traj_to_execute.execute(
+                    env=env,
+                    env_interface=env_interface,
+                    render=render,
+                    video_writer=video_writer,
+                    video_skip=video_skip,
+                    camera_names=camera_names,
+                    bimanual=self.bimanual,
+                )
 
             # check that trajectory is non-empty
             if len(exec_results["states"]) > 0:
