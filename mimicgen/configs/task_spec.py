@@ -197,7 +197,6 @@ class MG_TaskSpec:
         if json_dict is None:
             json_dict = json.loads(json_string)
         
-        pdb.set_trace()
         task_spec = cls()
         num_phases = len(json_dict)
         for phase_index in range(num_phases):

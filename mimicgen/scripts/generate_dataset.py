@@ -282,13 +282,15 @@ def generate_dataset(
     else:
         task_spec = MG_TaskSpec.from_json(json_string=task_spec_json_string)
     
-
+    D2_sign = True if "D2" in mg_config.experiment.task.name else False
+    import pdb; pdb.set_trace()
     # make data generator object
     data_generator = DataGenerator(
         task_spec=task_spec,
         dataset_path=source_dataset_path,
         demo_keys=all_demos,
-        bimanual=bimanual
+        bimanual=bimanual,
+        D2_sign=D2_sign,
     )
 
     print("\n==== Created Data Generator ====")

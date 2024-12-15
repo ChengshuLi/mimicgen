@@ -32,6 +32,7 @@ class DataGenerator(object):
         dataset_path,
         demo_keys=None,
         bimanual=False,
+        D2_sign=False,
     ):
         """
         Args:
@@ -46,6 +47,7 @@ class DataGenerator(object):
         self.task_spec = task_spec
         self.dataset_path = dataset_path
         self.bimanual = bimanual
+        self.D2_sign = D2_sign
 
         if self.bimanual:
             self.num_phases = len(self.task_spec)
@@ -359,6 +361,16 @@ class DataGenerator(object):
             subtask_ind_vals = np.sort(np.unique(all_subtask_inds))
             num_subtasks = len(subtask_ind_vals) - 1
 
+            if self.D2_sign:
+                # change the information for two arms
+                cur_phase_task_spec_new = []
+                cur_phase_task_spec_new.append(cur_phase_task_spec[1])
+                cur_phase_task_spec_new.append(cur_phase_task_spec[0])
+                cur_phase_task_spec = cur_phase_task_spec_new
+                all_subtask_inds_new = []
+                all_subtask_inds_new.append(all_subtask_inds[1])
+                all_subtask_inds_new.append(all_subtask_inds[0])
+                all_subtask_inds = all_subtask_inds_new
 
             for subtask_ind_reordered in range(num_subtasks):
 
@@ -391,10 +403,12 @@ class DataGenerator(object):
                     src_subtask_eef_poses = src_ep_datagen_info.eef_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
                     src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
-                    if arm_name == 'arm_left':
+                    if (arm_name == 'arm_left' and not self.D2_sign) or (arm_name == 'arm_right' and self.D2_sign):
+                        print('select left arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
-                    elif arm_name == 'arm_right':
+                    elif (arm_name == 'arm_right' and not self.D2_sign) or (arm_name == 'arm_left' and self.D2_sign):
+                        print('select right arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
 
