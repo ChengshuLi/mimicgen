@@ -242,7 +242,61 @@ class DataGenerator(object):
 
         return traj_to_execute
 
-    # for tiago cup
+    def change_arm_role_heuristic(self,
+                                  env_interface,
+                                  start_step,
+                                  selected_src_demo_ind,
+                                  cur_phase_task_spec
+                                  ):
+        change_role = False
+
+        src_left_arm_start_pos = self.src_dataset_infos[selected_src_demo_ind].eef_pose[start_step:start_step+1][:,:4,:] # shape (1, 4, 4)
+        src_right_arm_start_pose = self.src_dataset_infos[selected_src_demo_ind].eef_pose[start_step:start_step+1][:,4:,:] # shape (1, 4, 4)
+
+        left_arm_object_name = cur_phase_task_spec[0][0]["object_ref"]
+        right_arm_object_name = cur_phase_task_spec[1][0]["object_ref"]
+        src_left_arm_object_pose = self.src_dataset_infos[selected_src_demo_ind].object_poses[left_arm_object_name][start_step]
+        src_right_arm_object_pose = self.src_dataset_infos[selected_src_demo_ind].object_poses[right_arm_object_name][start_step]
+        cur_left_arm_object_pose = env_interface.get_datagen_info().object_poses[left_arm_object_name] # shape (4, 4)
+        cur_right_arm_object_pose = env_interface.get_datagen_info().object_poses[right_arm_object_name] # shape (4, 4)
+
+        transformed_eef_poses_left_arm_object = PoseUtils.transform_source_data_segment_using_object_pose(
+            obj_pose=cur_left_arm_object_pose, 
+            src_eef_poses=src_left_arm_start_pos,
+            src_obj_pose=src_left_arm_object_pose) # shape (1, 4, 4)
+        transformed_eef_poses_right_arm_object = PoseUtils.transform_source_data_segment_using_object_pose(
+            obj_pose=cur_right_arm_object_pose, 
+            src_eef_poses=src_right_arm_object_pose,
+            src_obj_pose=src_right_arm_object_pose) # shape (1, 4, 4)
+
+        cur_left_arm_pose = env_interface.get_datagen_info().eef_pose[None][:,:4,:] # shape (1, 4, 4)
+        cur_right_arm_pose = env_interface.get_datagen_info().eef_pose[None][:,4:,:] # shape (1, 4, 4)
+
+        distance_left_arm_to_traj_left_arm_object = np.linalg.norm(cur_left_arm_pose[:,:,-1] - transformed_eef_poses_left_arm_object[:,:,-1])
+        distance_right_arm_to_traj_left_arm_object = np.linalg.norm(cur_right_arm_pose[:,:,-1] - transformed_eef_poses_left_arm_object[:,:,-1])
+
+        distance_left_arm_to_traj_right_arm_object = np.linalg.norm(cur_left_arm_pose[:,:,-1] - transformed_eef_poses_right_arm_object[:,:,-1])
+        distance_right_arm_to_traj_right_arm_object = np.linalg.norm(cur_right_arm_pose[:,:,-1] - transformed_eef_poses_right_arm_object[:,:,-1])
+
+        print('========================================== new phase ==========================================')
+        print('distance_left_arm_to_traj_left_arm_object', distance_left_arm_to_traj_left_arm_object)
+        print('distance_right_arm_to_traj_left_arm_object', distance_right_arm_to_traj_left_arm_object)
+        print('distance_left_arm_to_traj_right_arm_object', distance_left_arm_to_traj_right_arm_object)
+        print('distance_right_arm_to_traj_right_arm_object', distance_right_arm_to_traj_right_arm_object)
+
+        # compare the distances 
+        if distance_left_arm_to_traj_left_arm_object < distance_right_arm_to_traj_left_arm_object and distance_right_arm_to_traj_right_arm_object < distance_right_arm_to_traj_left_arm_object:
+            change_role = False
+            print('no change role')
+        elif distance_left_arm_to_traj_left_arm_object > distance_right_arm_to_traj_left_arm_object and distance_right_arm_to_traj_right_arm_object > distance_right_arm_to_traj_left_arm_object:
+            change_role = True
+            print('change role')
+        else:
+            raise ValueError('The distance comparison heuristic is not applicable, check corner cases')
+
+        return change_role
+
+
     def generate(
         self,
         env,
@@ -360,8 +414,20 @@ class DataGenerator(object):
             all_subtask_inds = all_subtask_inds_structure[phase_ind]
             subtask_ind_vals = np.sort(np.unique(all_subtask_inds))
             num_subtasks = len(subtask_ind_vals) - 1
+            
+            # a distance based heuristic to change the role of the two arms
+            # calculate the start of the replay part
+            # currently assume that the start point is the first subtask of the current phase
+            # TODO: need to change this to other starting point when the motion planner is integrated
+            start_step = subtask_ind_vals[0]
+            change_role = self.change_arm_role_heuristic(
+                env_interface,
+                start_step,
+                selected_src_demo_ind,
+                cur_phase_task_spec
+                )
 
-            if self.D2_sign:
+            if change_role:
                 # change the information for two arms
                 cur_phase_task_spec_new = []
                 cur_phase_task_spec_new.append(cur_phase_task_spec[1])
@@ -403,11 +469,11 @@ class DataGenerator(object):
                     src_subtask_eef_poses = src_ep_datagen_info.eef_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
                     src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
-                    if (arm_name == 'arm_left' and not self.D2_sign) or (arm_name == 'arm_right' and self.D2_sign):
+                    if (arm_name == 'arm_left' and not change_role) or (arm_name == 'arm_right' and change_role):
                         print('select left arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
-                    elif (arm_name == 'arm_right' and not self.D2_sign) or (arm_name == 'arm_left' and self.D2_sign):
+                    elif (arm_name == 'arm_right' and not change_role) or (arm_name == 'arm_left' and change_role):
                         print('select right arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
