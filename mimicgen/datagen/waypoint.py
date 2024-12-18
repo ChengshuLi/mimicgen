@@ -356,6 +356,7 @@ class WaypointTrajectory(object):
         video_skip=5, 
         camera_names=None,
         bimanual=False,
+        cur_subtask_end_step_MP=None
     ):
         """
         Main function to execute the trajectory. Will use env_interface.target_pose_to_action to
@@ -370,6 +371,7 @@ class WaypointTrajectory(object):
             video_skip (int): determines rate at which environment frames are written to video
             camera_names (list): determines which camera(s) are used for rendering. Pass more than
                 one to output a video with multiple camera views concatenated horizontally.
+            cur_subtask_end_step_MP: list of size 2, the end point of motion planner for two arms
 
         Returns:
             results (dict): dictionary with the following items for the executed trajectory:

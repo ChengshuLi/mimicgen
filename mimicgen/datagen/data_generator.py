@@ -555,6 +555,46 @@ class DataGenerator(object):
                 
                 traj_to_execute = self.merge_trajs(traj_list_all)
 
+                # okay now hardcode the motion planner end pointa
+                end_step_of_MP = [
+                    [ # first phase,
+                        [160, -1, -1], # left arm, -1 means the end of the subtask
+                        [110, 0, 0] # right arm, 0 means the start of the subtask
+                    ],
+                    [ # second phase,
+                        [830], # left arm
+                        [-1] # right arm
+                    ]
+                ]
+
+                # if change_role:
+                #     end_step_of_MP_new = []
+                #     end_step_of_MP_new.append([]) # first phase
+                #     end_step_of_MP_new[-1].append(end_step_of_MP[0][1])
+                #     end_step_of_MP_new[-1].append(end_step_of_MP[0][0])
+                #     end_step_of_MP_new.append([]) # secpnd phase
+                #     end_step_of_MP_new[-1].append(end_step_of_MP[1][1])
+                #     end_step_of_MP_new[-1].append(end_step_of_MP[1][0])
+                #     end_step_of_MP = end_step_of_MP_new
+                if change_role:
+                    cur_subtask_end_step_MP = [
+                        end_step_of_MP[phase_ind][1][subtask_ind_reordered], # left arm
+                        end_step_of_MP[phase_ind][0][subtask_ind_reordered] # right arm
+                    ]
+                else:
+                    cur_subtask_end_step_MP = [
+                        end_step_of_MP[phase_ind][0][subtask_ind_reordered], # left arm
+                        end_step_of_MP[phase_ind][1][subtask_ind_reordered] # right arm
+                        ]
+
+                for i in range(2):
+                    if cur_subtask_end_step_MP[i] == -1:
+                        cur_subtask_end_step_MP[i] = selected_src_subtask_inds[-1]
+                    elif cur_subtask_end_step_MP[i] == 0:
+                        cur_subtask_end_step_MP[i] = selected_src_subtask_inds[0]
+                
+                print('cur_subtask_end_step_MP', cur_subtask_end_step_MP)
+                
                 # now still execute each subtask separately
                 import pdb; pdb.set_trace()
         
@@ -567,6 +607,7 @@ class DataGenerator(object):
                     video_skip=video_skip,
                     camera_names=camera_names,
                     bimanual=self.bimanual,
+                    cur_subtask_end_step_MP=cur_subtask_end_step_MP,
                 )
 
             # check that trajectory is non-empty

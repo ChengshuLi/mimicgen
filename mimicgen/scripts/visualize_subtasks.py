@@ -94,6 +94,8 @@ def visualize_subtasks_with_env(
     should_add_border_to_frame = False
     for i in range(traj_len):
         # reset to state
+        print('timestep', i)
+        input()
         env.reset_to({"states": states[i]})
 
         # whether we are on last index of current subtask
