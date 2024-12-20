@@ -276,12 +276,13 @@ def parse_source_dataset_bimanual(
         ep_grp = f["data/{}".format(ep)]
 
         # extract datagen info
+        # Only record eef_pose that are actually achieved, not the target_pose
         ep_datagen_info = ep_grp["datagen_info"]
         ep_datagen_info_obj = DatagenInfo(
             eef_pose=ep_datagen_info["eef_pose"][:],
             object_poses={ k : ep_datagen_info["object_poses"][k][:] for k in ep_datagen_info["object_poses"] },
             subtask_term_signals={ k : ep_datagen_info["subtask_term_signals"][k][:] for k in ep_datagen_info["subtask_term_signals"] },
-            target_pose=ep_datagen_info["target_pose"][:],
+            # target_pose=ep_datagen_info["target_pose"][:],
             gripper_action=ep_datagen_info["gripper_action"][:],
         )
         datagen_infos.append(ep_datagen_info_obj)
