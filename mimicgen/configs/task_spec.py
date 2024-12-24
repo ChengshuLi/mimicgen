@@ -224,6 +224,8 @@ class MG_TaskSpec:
         num_fixed_steps=0,
         apply_noise_during_interpolation=False,
         arm='left',
+        MP_end_step=None,
+        attached_obj=None,
     ):
         """
         Add subtask to this task spec.
@@ -270,6 +272,8 @@ class MG_TaskSpec:
                 leading up to this subtask, as well as during the execution of this subtask
 
             arm (str): arm role for this subtask. Should be either 'left' or 'right'
+
+            MP_end_step (int or None): the end step of the motion planner. If it is None, the end step is the last step of the episode.
         """
         if subtask_term_offset_range is None:
             # corresponds to no offset
@@ -291,6 +295,8 @@ class MG_TaskSpec:
             num_fixed_steps=num_fixed_steps,
             apply_noise_during_interpolation=apply_noise_during_interpolation,
             arm=arm,
+            MP_end_step=MP_end_step,
+            attached_obj=attached_obj,
         ))
     
     def serialize(self):

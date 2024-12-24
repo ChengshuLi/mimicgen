@@ -499,7 +499,9 @@ def set_subtask_settings_bimanual(
                 "action_noise": "noise",
                 "num_interpolation_steps":"ni",
                 "num_fixed_steps": "ni",
-                "subtask_term_step": "subtask_term_step"
+                "subtask_term_step": "subtask_term_step",
+                "MP_end_step": "MP_end_step",
+                "attached_obj": "attached_obj",
             }
             for kwargs in name_mapping.keys():
                 generator.add_param(

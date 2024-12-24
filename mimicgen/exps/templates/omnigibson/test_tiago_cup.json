@@ -46,8 +46,10 @@
                     "subtask_1": {
                         "arm": "left",
                         "object_ref": "paper_cup",
+                        "attached_obj": null,
                         "subtask_term_signal": "grasp_left",
                         "subtask_term_step": 300,
+                        "MP_end_step": 160,
                         "subtask_term_offset_range": [
                             5,
                             10
@@ -62,8 +64,10 @@
                     "subtask_2": {
                         "arm": "left",
                         "object_ref": "paper_cup",
+                        "attached_obj": "paper_cup",
                         "subtask_term_signal": "ungrasp_right",
                         "subtask_term_step": 650,
+                        "MP_end_step": 650,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -77,8 +81,10 @@
                     "subtask_1": {
                         "arm": "right",
                         "object_ref": "coffee_cup",
+                        "attached_obj": null,
                         "subtask_term_signal": "grasp_right",
-                        "subtask_term_step": 350,
+                        "subtask_term_step": 280,
+                        "MP_end_step": 110,
                         "subtask_term_offset_range": [
                             5,
                             10
@@ -93,8 +99,10 @@
                     "subtask_2": {
                         "arm": "right",
                         "object_ref": "coffee_cup",
+                        "attached_obj": "coffee_cup",
                         "subtask_term_signal": "ungrasp_right",
                         "subtask_term_step": 650,
+                        "MP_end_step": 280,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -111,8 +119,10 @@
                     "subtask_1": {
                         "arm": "left",
                         "object_ref": "coffee_cup",
+                        "attached_obj": "paper_cup",
                         "subtask_term_signal": null,
                         "subtask_term_step": null,
+                        "MP_end_step": 830,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -126,8 +136,10 @@
                     "subtask_1": {
                         "arm": "right",
                         "object_ref": "coffee_cup",
+                        "attached_obj": null,
                         "subtask_term_signal": null,
                         "subtask_term_step": null,
+                        "MP_end_step": null,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,

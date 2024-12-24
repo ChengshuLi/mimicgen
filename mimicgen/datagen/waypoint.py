@@ -391,6 +391,7 @@ class WaypointTrajectory(object):
         # write_video = (video_writer is not None)
         # video_count = 0
 
+        local_env_step = 0
         states = []
         actions = []
         observations = []
@@ -488,8 +489,10 @@ class WaypointTrajectory(object):
             success_status, traj_path = successes[0], traj_paths[0]
             # print("success status", success_status)
             # breakpoint()
+            # TODO: change the logic, if the motion planner fails, then we reply the trajectory
             assert success_status, "motion planning failed"
 
+            # import pdb; pdb.set_trace()
             # Convert planned joint trajectory to actions
             q_traj = env.cmg.path_to_joint_trajectory(traj_path, emb_sel).cpu()
             mp_actions = []
@@ -509,6 +512,8 @@ class WaypointTrajectory(object):
                     action[env_interface.gripper_action_dim[1]] = right_gripper_action[1]
                 mp_actions.append(action)
 
+            # import pdb; pdb.set_trace()
+            # TODO: the logic here is a bit hard to understand, will need to ask Eric and revisit later
             # If the left hand has no motion planner waypoints, we start replaying the left hand waypoints while the right hand are following the MP trajectory.
             if len(left_mp_waypoints) == 0:
                 # We need to pad the left hand waypoints to match the length of the MP trajectory
@@ -540,6 +545,7 @@ class WaypointTrajectory(object):
 
                 right_replay_waypoints = right_replay_waypoints[len(mp_actions):]
 
+            # import pdb; pdb.set_trace()
             # For each motion planner action, we repeat it 3 times for the controllers to converge
             num_repeat = 3
             for mp_action in mp_actions:
@@ -548,6 +554,7 @@ class WaypointTrajectory(object):
                     obs = env.get_observation()
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action)
+                    local_env_step += 1
                     states.append(state)
                     actions.append(mp_action)
                     observations.append(obs)
@@ -558,6 +565,22 @@ class WaypointTrajectory(object):
 
             # print("MP actions")
             # breakpoint()
+        
+        # import pdb; pdb.set_trace()
+        
+        MP_end_step_local = copy.deepcopy(local_env_step)
+        # left MP points
+        if len(left_mp_waypoints) == 0: 
+            left_MP_end_step_local = 0
+        else: 
+            left_MP_end_step_local = MP_end_step_local
+        if len(right_mp_waypoints) == 0: 
+            right_MP_end_step_local = 0
+        else: 
+            right_MP_end_step_local = MP_end_step_local
+        MP_end_step_local_dict = {"left": left_MP_end_step_local, "right": right_MP_end_step_local}
+        # import pdb; pdb.set_trace()
+        
 
         # Now we move on to the replay phase
         # We need to pad the waypoints for the left and right hands to match the length of the longest trajectory
@@ -595,6 +618,7 @@ class WaypointTrajectory(object):
             obs = env.get_observation()
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action)
+            local_env_step += 1
             states.append(state)
             actions.append(replay_action)
             observations.append(obs)
@@ -602,6 +626,8 @@ class WaypointTrajectory(object):
             cur_success_metrics = env.is_success()
             for k in success:
                 success[k] = success[k] or cur_success_metrics[k]
+
+        # import pdb; pdb.set_trace()
 
         # print("replay actions")
         # breakpoint()
@@ -699,5 +725,9 @@ class WaypointTrajectory(object):
             datagen_infos=datagen_infos,
             actions=np.array(actions),
             success=bool(success["task"]),
+            mp_end_steps=MP_end_step_local_dict,
+            subtask_lengths=local_env_step,
         )
+        print('mp_end_steps', results['mp_end_steps'])
+        print('subtask_lengths', results['subtask_lengths'])
         return results
