@@ -720,7 +720,6 @@ class DataGenerator(object):
                 if pause_subtask:
                     input("Pausing after subtask {} execution. Press any key to continue...".format(subtask_ind))
 
-        import pdb; pdb.set_trace()
         # TODO: why need to merge the generated actions
         # merge numpy arrays
         if len(generated_actions) > 0:

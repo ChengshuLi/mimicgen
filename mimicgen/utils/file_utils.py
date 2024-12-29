@@ -385,6 +385,8 @@ def write_demo_to_hdf5(
     actions,
     src_demo_inds=None,
     src_demo_labels=None,
+    mp_end_steps=None,
+    subtask_lengths=None,
 ):
     """
     Helper function to write demonstration to an hdf5 file (robomimic format) in a folder. It will be 
@@ -447,6 +449,10 @@ def write_demo_to_hdf5(
         ep_data_grp.create_dataset("src_demo_inds", data=np.array(src_demo_inds))
     if src_demo_labels is not None:
         ep_data_grp.create_dataset("src_demo_labels", data=np.array(src_demo_labels))
+    if mp_end_steps is not None:
+        ep_data_grp.create_dataset("mp_end_steps", data=np.array(mp_end_steps))
+    if subtask_lengths is not None:
+        ep_data_grp.create_dataset("subtask_lengths", data=np.array(subtask_lengths))
 
     # episode metadata
     if ("model" in initial_state) and (initial_state["model"] is not None):

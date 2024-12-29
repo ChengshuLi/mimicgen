@@ -579,7 +579,7 @@ class WaypointTrajectory(object):
         else: 
             right_MP_end_step_local = MP_end_step_local
         MP_end_step_local_dict = {"left": left_MP_end_step_local, "right": right_MP_end_step_local}
-        # import pdb; pdb.set_trace()
+        MP_end_step_local_lsit = [left_MP_end_step_local, right_MP_end_step_local]
         
 
         # Now we move on to the replay phase
@@ -725,7 +725,7 @@ class WaypointTrajectory(object):
             datagen_infos=datagen_infos,
             actions=np.array(actions),
             success=bool(success["task"]),
-            mp_end_steps=MP_end_step_local_dict,
+            mp_end_steps=MP_end_step_local_lsit,
             subtask_lengths=local_env_step,
         )
         print('mp_end_steps', results['mp_end_steps'])

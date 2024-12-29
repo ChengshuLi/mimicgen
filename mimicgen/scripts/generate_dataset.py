@@ -283,7 +283,6 @@ def generate_dataset(
         task_spec = MG_TaskSpec.from_json(json_string=task_spec_json_string)
     
     D2_sign = True if "D2" in mg_config.experiment.task.name else False
-    import pdb; pdb.set_trace()
     # make data generator object
     data_generator = DataGenerator(
         task_spec=task_spec,
@@ -342,6 +341,7 @@ def generate_dataset(
     while True:
         # generate trajectory
         try:
+            start_time = time.time()
             generated_traj = data_generator.generate(
                 env=env,
                 env_interface=env_interface,
@@ -354,6 +354,9 @@ def generate_dataset(
                 camera_names=render_image_names,
                 pause_subtask=pause_subtask,
             )
+            print("==============================")
+            print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
+            print("==============================")
         except exceptions_to_except as e:
             # problematic trajectory - do not have this count towards our total number of attempts, and re-try
             print("")
@@ -385,6 +388,8 @@ def generate_dataset(
                 actions=generated_traj["actions"],
                 src_demo_inds=generated_traj["src_demo_inds"],
                 src_demo_labels=generated_traj["src_demo_labels"],
+                mp_end_steps=generated_traj["mp_end_steps"],
+                subtask_lengths=generated_traj["subtask_lengths"],
             )
             selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
@@ -405,6 +410,8 @@ def generate_dataset(
                     actions=generated_traj["actions"],
                     src_demo_inds=generated_traj["src_demo_inds"],
                     src_demo_labels=generated_traj["src_demo_labels"],
+                    mp_end_steps=generated_traj["mp_end_steps"],
+                    subtask_lengths=generated_traj["subtask_lengths"],
                 )
 
         num_attempts += 1
