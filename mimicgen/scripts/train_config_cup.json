@@ -29,7 +29,7 @@
         "rollout": {
             "enabled": true,
             "n": 2,
-            "horizon": 1000,
+            "horizon": 1500,
             "rate": 100,
             "warmstart": 0,
             "terminate_on_success": true
@@ -46,7 +46,7 @@
         "hdf5_normalize_obs": false,
         "hdf5_filter_key": "train",
         "hdf5_validation_filter_key": "valid",
-        "seq_length": 10,
+        "seq_length": 2,
         "pad_seq_length": true,
         "frame_stack": 1,
         "pad_frame_stack": true,
@@ -90,7 +90,7 @@
         "goal_mode": null,
         "cuda": true,
         "batch_size": 100,
-        "num_epochs": 5000,
+        "num_epochs": 3000,
         "seed": 1,
         "data_format": "robomimic"
     },
@@ -117,8 +117,8 @@
             "cos_weight": 0.0
         },
         "actor_layer_dims": [
-            512,
-            512
+            1024,
+            1024
         ],
         "gaussian": {
             "enabled": false,
@@ -172,8 +172,8 @@
         },
         "rnn": {
             "enabled": true,
-            "horizon": 10,
-            "hidden_dim": 512,
+            "horizon": 2,
+            "hidden_dim": 1024,
             "rnn_type": "LSTM",
             "num_layers": 1,
             "open_loop": false,
@@ -200,7 +200,12 @@
         "modalities": {
             "obs": {
                 "low_dim": [
-                    "task::low_dim"
+                    "eef_left_pos", 
+                    "eef_left_quat", 
+                    "eef_right_pos", 
+                    "eef_right_quat", 
+                    "object::dixie_cup", 
+                    "object::coffee_cup"
                 ],
                 "rgb": [],
                 "depth": [],
