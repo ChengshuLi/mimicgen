@@ -411,6 +411,12 @@ class DataGenerator(object):
             position=th.tensor([ 1.7492, -0.0424,  1.5371]),
             orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
         )
+        # TODO: need to change the sensor resolution to 1280x720
+        sensor = env.env._external_sensors['external_sensor0']
+        sensor.set_position_orientation(
+            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+            )
         for _ in range(5): og.sim.render()
 
         # parse MP_end_step from the configuration file
@@ -687,7 +693,7 @@ class DataGenerator(object):
                 
                 # now still execute each subtask separately
                 # import pdb; pdb.set_trace()
-        
+
                 # Execute the trajectory and collect data.
                 exec_results = traj_to_execute.execute(
                     env=env,

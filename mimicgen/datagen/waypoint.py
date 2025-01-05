@@ -551,7 +551,8 @@ class WaypointTrajectory(object):
             for mp_action in mp_actions:
                 for _ in range(num_repeat):
                     state = env.get_state()["states"]
-                    obs = env.get_observation()
+                    # obs = env.get_observation()
+                    obs = env.get_obs_IL()
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action)
                     local_env_step += 1
@@ -562,6 +563,8 @@ class WaypointTrajectory(object):
                     cur_success_metrics = env.is_success()
                     for k in success:
                         success[k] = success[k] or cur_success_metrics[k]
+            
+            print('length of MP actions:', len(mp_actions))
 
             # print("MP actions")
             # breakpoint()
@@ -615,9 +618,11 @@ class WaypointTrajectory(object):
                 env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
 
             state = env.get_state()["states"]
-            obs = env.get_observation()
+            # obs = env.get_observation()
+            obs = env.get_obs_IL()
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action)
+            # import pdb; pdb.set_trace()
             local_env_step += 1
             states.append(state)
             actions.append(replay_action)

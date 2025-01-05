@@ -2,12 +2,12 @@
     "algo_name": "bc",
     "experiment": {
         "name": "test_tiago_cup",
-        "validate": true,
+        "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
-            "log_tb": true,
-            "log_wandb": false,
-            "wandb_proj_name": "debug"
+            "log_tb": false,
+            "log_wandb": true,
+            "wandb_proj_name": "tiago_cup"
         },
         "save": {
             "enabled": false,
@@ -27,7 +27,7 @@
         "keep_all_videos": true,
         "video_skip": 5,
         "rollout": {
-            "enabled": true,
+            "enabled": false,
             "n": 2,
             "horizon": 1500,
             "rate": 100,

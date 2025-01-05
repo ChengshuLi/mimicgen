@@ -113,7 +113,7 @@ def doppel_get_exp_dir(config):
     #     time_str=time_str,
     # )
 
-    return log_dir, output_dir, video_dir
+    return log_dir, output_dir, video_dir, time_str
 
 def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=1, auto_remove_exp=False):
     """
@@ -133,7 +133,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     if not auto_remove_exp:
         # if we don't auto_remove existing experiment folder
         # call this to create new time stamp folder in the same experiment folder
-        log_dir, ckpt_dir, video_dir = doppel_get_exp_dir(config)
+        log_dir, ckpt_dir, video_dir, time_str = doppel_get_exp_dir(config)
         # save_dir = os.path.join(config.train.output_dir, config.experiment.name)
         # log_dir, ckpt_dir, video_dir = os.getpwd(), os.getcwd
     else:
@@ -223,6 +223,15 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         # AssertionError: Invalid wrapper type received! Valid options are: dict_keys(['DataWrapper', 'DataCollectionWrapper', 'DataPlaybackWrapper']), got: None
         # env.wrap_env()
 
+        # change viewer camera position
+        # set camera postion
+        import torch as th
+        og.sim.viewer_camera.set_position_orientation(
+            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+        )
+        for _ in range(5): og.sim.render()
+
         env = EnvUtils.wrap_env_from_config(env, config=config) # apply environment warpper, if applicable
         envs[env.name] = env
         print(envs[env.name])
@@ -254,6 +263,13 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
 
     
     # setup for a new training run
+
+    # change the wandb name to the current time_str
+    if config.experiment.logging.log_wandb:
+        config.unlock()
+        config.experiment.name = time_str
+        config.lock()
+
     data_logger = DataLogger(
         log_dir,
         config,
@@ -299,8 +315,19 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     if config.train.hdf5_normalize_obs:
         obs_normalization_stats = trainset.get_obs_normalization_stats()
 
+    # rename mean to offset, std to scale
+    if obs_normalization_stats is not None:
+        obs_normalization_stats = {
+            k: {
+                "offset": v["mean"],
+                "scale": v["std"],
+            }
+            for k, v in obs_normalization_stats.items()
+        }
+
     # maybe retreve statistics for normalizing actions
     # action_normalization_stats = trainset.get_action_normalization_stats()
+    # import pdb; pdb.set_trace()
 
     # initialize data loaders
     train_loader = DataLoader(
@@ -437,6 +464,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
             )
 
             num_episodes = config.experiment.rollout.n
+            print('start roll outs')
             all_rollout_logs, video_paths = TrainUtils.rollout_with_stats(
                 policy=rollout_model,
                 envs=envs,
