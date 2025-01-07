@@ -1,7 +1,7 @@
 {
     "algo_name": "bc",
     "experiment": {
-        "name": "test_tiago_cup",
+        "name": "test_tiago_cup_plr_0.001_gmm_f_rnnd_400_mlp_1024",
         "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
@@ -43,10 +43,10 @@
         "hdf5_cache_mode": "low_dim",
         "hdf5_use_swmr": true,
         "hdf5_load_next_obs": false,
-        "hdf5_normalize_obs": false,
+        "hdf5_normalize_obs": true,
         "hdf5_filter_key": "train",
         "hdf5_validation_filter_key": "valid",
-        "seq_length": 2,
+        "seq_length": 10,
         "pad_seq_length": true,
         "frame_stack": 1,
         "pad_frame_stack": true,
@@ -129,7 +129,7 @@
             "low_noise_eval": true
         },
         "gmm": {
-            "enabled": true,
+            "enabled": false,
             "num_modes": 5,
             "min_std": 0.0001,
             "std_activation": "softplus",
@@ -172,8 +172,8 @@
         },
         "rnn": {
             "enabled": true,
-            "horizon": 2,
-            "hidden_dim": 1024,
+            "horizon": 10,
+            "hidden_dim": 400,
             "rnn_type": "LSTM",
             "num_layers": 1,
             "open_loop": false,
@@ -200,11 +200,11 @@
         "modalities": {
             "obs": {
                 "low_dim": [
-                    "eef_left_pos", 
-                    "eef_left_quat", 
-                    "eef_right_pos", 
-                    "eef_right_quat", 
-                    "object::dixie_cup", 
+                    "eef_left_pos",
+                    "eef_left_quat",
+                    "eef_right_pos",
+                    "eef_right_quat",
+                    "object::dixie_cup",
                     "object::coffee_cup"
                 ],
                 "rgb": [],
@@ -348,22 +348,18 @@
         }
     },
     "meta": {
-        "hp_base_config_file": "/cvgl2/u/jdwong/PAIR/doppelmaker/doppelmaker/scripts_sc/hp_sweep/bc_rnn_hp_sweep.json",
+        "hp_base_config_file": "./train_configs/train_config_cup.json",
         "hp_keys": [
-            "rnnHorizon",
-            "seqLenth",
-            "lr",
+            "plr",
             "gmm",
             "rnnd",
             "mlp"
         ],
         "hp_values": [
-            10,
-            10,
-            0.0001,
-            "t",
-            512,
-            "512"
+            0.001,
+            "f",
+            400,
+            "1024"
         ]
     }
 }

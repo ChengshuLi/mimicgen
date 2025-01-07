@@ -4,6 +4,7 @@ import robomimic.utils.file_utils as FileUtils
 from robomimic.config import config_factory
 import h5py, argparse, pdb
 from robomimic.scripts.split_train_val import split_train_val_from_hdf5
+import matplotlib.pyplot as plt
 
 # print with 3 decimal points
 np.set_printoptions(precision=3)
@@ -74,6 +75,52 @@ np.set_printoptions(precision=3)
         - subtask_lengths (length,)
     - demo_1
 """
+
+def compute_point_cloud_from_depth(depth, K, cam_to_img_tf=None, world_to_cam_tf=None, visualize_every=0, grid_limits=None):
+    # K - 3x3 cam intrinsics matrix
+    # tfs - 4x4 homogeneous global pose tf for cam
+    # Camera points in -z, so rotate by 180 deg so it points correctly in +z -- this means
+    # omni cam_to_img_tf is T.pose2mat(([0, 0, 0], T.euler2quat([np.pi, 0, 0])))
+    # print("Computing point cloud from depth...")
+    h, w = depth.shape
+    y, x = np.meshgrid(np.arange(h), np.arange(w), indexing="ij", sparse=False)
+    assert depth.min() >= 0
+    u = x
+    v = y
+    uv = np.dstack((u, v, np.ones_like(u)))
+
+    Kinv = np.linalg.inv(K)
+
+    pc = depth.reshape(-1, 1) * (uv.reshape(-1, 3) @ Kinv.T)
+    pc = pc.reshape(h, w, 3)
+
+    # If no tfs, use identity matrix
+    cam_to_img_tf = np.eye(4) if cam_to_img_tf is None else cam_to_img_tf
+    world_to_cam_tf = np.eye(4) if world_to_cam_tf is None else world_to_cam_tf
+
+    pc = np.concatenate([pc.reshape(-1, 3), np.ones((h * w, 1))], axis=-1)  # shape (H*W, 4)
+
+    # Convert using camera transform
+    # Create (H * W, 4) vector from pc
+    pc = (pc @ cam_to_img_tf.T @ world_to_cam_tf.T)[:, :3].reshape(h, w, 3)
+
+    if visualize_every > 0:
+        pc_flat = np.array(pc.reshape(-1, 3))
+        pc_flat = np.where(np.linalg.norm(pc_flat, axis=-1, keepdims=True) > 1e4, 0.0, pc_flat)
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection="3d")
+        ax.scatter(pc_flat[::visualize_every, 0], pc_flat[::visualize_every, 1], pc_flat[::visualize_every, 2], s=1)
+        if grid_limits is not None:
+            ax.set_xbound(lower=-grid_limits, upper=grid_limits)
+            ax.set_ybound(lower=-grid_limits, upper=grid_limits)
+            ax.set_zbound(lower=-grid_limits, upper=grid_limits)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        plt.show()
+    # print("Finish computing point cloud from depth")
+
+    return pc
 
 def parse_obs(obs, obs_type):
     """
