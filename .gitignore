@@ -3,7 +3,9 @@
 training_results/
 paper/
 /logs/
-
+/debug_imgs*/
+/debug_images*/
+/debug_image*/
 
 # Mac OSX
 .DS_Store

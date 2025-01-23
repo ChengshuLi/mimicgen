@@ -66,6 +66,8 @@ from mimicgen.configs import config_factory as MG_ConfigFactory
 from mimicgen.datagen.data_generator import DataGenerator
 from mimicgen.env_interfaces.base import make_interface
 
+from mimicgen.train_scripts.eval_mimicgen import sensor_customize_test_tiago_cup
+
 # import doppelmaker
 # doppelmaker.import_og_dependencies()
 
@@ -139,6 +141,18 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     else:
         log_dir, ckpt_dir, video_dir = TrainUtils.get_exp_dir(config, auto_remove_exp_dir=auto_remove_exp)
         
+    # change the wandb name to the current time_str
+    if config.experiment.logging.log_wandb:
+        config.unlock()
+        config.experiment.name = time_str
+        config.lock()
+
+    data_logger = DataLogger(
+        log_dir,
+        config,
+        log_tb=config.experiment.logging.log_tb,
+        log_wandb=config.experiment.logging.log_wandb,
+    )
     if config.experiment.logging.terminal_output_to_txt:
         # log stdout and stderr to a text file
         logger = PrintLogger(os.path.join(log_dir, 'log.txt'))
@@ -174,6 +188,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     print("\n============= Loaded Environment Metadata =============")
     # path to source dataset
     source_dataset_path = os.path.expandvars(os.path.expanduser(mg_config.experiment.source.dataset_path))
+    # source_dataset_path = os.path.expandvars(os.path.expanduser(config.train.data))
 
     # get environment metadata from dataset
     ds_format = config.train.data_format    # TODO: Why BC-RNN config does not have ds_format?
@@ -182,6 +197,11 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     # env args: cameras to use come from debug camera video to write, or from observation collection
     if config.experiment.rollout.enabled:
         envs = OrderedDict()
+
+        # need to check environment headless issues
+        from omnigibson.macros import gm
+        gm.HEADLESS = True
+        # headless = os.environ.get("OMNIGIBSON_HEADLESS")
 
         env = RobomimicUtils.create_env(
             env_meta=env_meta,
@@ -196,46 +216,51 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
             render_offscreen=False, #config.experiment.render_video,
             use_image_obs=False,
             use_depth_obs=False,
+            init_curobo=False,
         )
 
+        
+        # env.policy_rollout = True
 
-        # load basic metadata from training file
-        print("\n==== Using environment with the following metadata ====")
-        print(json.dumps(env.serialize(), indent=4))
-        print("")
+        # # load basic metadata from training file
+        # print("\n==== Using environment with the following metadata ====")
+        # print(json.dumps(env.serialize(), indent=4))
+        # print("")
 
-        import omnigibson as og
-        state = og.sim.dump_state()
-        og.sim.stop()
+        # import omnigibson as og
+        # state = og.sim.dump_state()
+        # og.sim.stop()
 
-        coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
-        coffee_cup.links['base_link'].density = 30
+        # coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
+        # coffee_cup.links['base_link'].density = 30
 
-        paper_cup = env.env.scene.object_registry("name", "paper_cup")
-        paper_cup.links['base_link'].density = 100
+        # paper_cup = env.env.scene.object_registry("name", "paper_cup")
+        # paper_cup.links['base_link'].density = 100
 
-        og.sim.play()
-        og.sim.load_state(state)
-        for _ in range(10): 
-            og.sim.render()
+        # og.sim.play()
+        # og.sim.load_state(state)
+        # for _ in range(10): 
+        #     og.sim.render()
 
-        # TODO: the following wrapper line will cause error
-        # AssertionError: Invalid wrapper type received! Valid options are: dict_keys(['DataWrapper', 'DataCollectionWrapper', 'DataPlaybackWrapper']), got: None
-        # env.wrap_env()
+        # # TODO: the following wrapper line will cause error
+        # # AssertionError: Invalid wrapper type received! Valid options are: dict_keys(['DataWrapper', 'DataCollectionWrapper', 'DataPlaybackWrapper']), got: None
+        # # env.wrap_env()
 
-        # change viewer camera position
-        # set camera postion
-        import torch as th
-        og.sim.viewer_camera.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        )
-        for _ in range(5): og.sim.render()
+        # # change viewer camera position
+        # # set camera postion
+        # import torch as th
+        # og.sim.viewer_camera.set_position_orientation(
+        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+        # )
+        # for _ in range(5): og.sim.render()
+
+        env = sensor_customize_test_tiago_cup(env)
 
         env = EnvUtils.wrap_env_from_config(env, config=config) # apply environment warpper, if applicable
         envs[env.name] = env
         print(envs[env.name])
-    
+
     print("")
     
     print("\n============= New Training Run with Config =============")
@@ -264,18 +289,6 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     
     # setup for a new training run
 
-    # change the wandb name to the current time_str
-    if config.experiment.logging.log_wandb:
-        config.unlock()
-        config.experiment.name = time_str
-        config.lock()
-
-    data_logger = DataLogger(
-        log_dir,
-        config,
-        log_tb=config.experiment.logging.log_tb,
-        log_wandb=config.experiment.logging.log_wandb,
-    )
     model = algo_factory(
         algo_name=config.algo_name,
         config=config,
@@ -326,7 +339,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         }
 
     # maybe retreve statistics for normalizing actions
-    # action_normalization_stats = trainset.get_action_normalization_stats()
+    action_normalization_stats = trainset.get_action_normalization_stats()
     # import pdb; pdb.set_trace()
 
     # initialize data loaders
@@ -397,6 +410,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
             epoch=epoch,
             num_steps=train_num_steps,
             obs_normalization_stats=obs_normalization_stats,
+            action_normalization_stats=action_normalization_stats,
         )
         model.on_epoch_end(epoch)
 
@@ -428,7 +442,14 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         # Evaluate the model on validation set
         if config.experiment.validate:
             with torch.no_grad():
-                step_log = TrainUtils.run_epoch(model=model, data_loader=valid_loader, epoch=epoch, validate=True, num_steps=valid_num_steps)
+                step_log = TrainUtils.run_epoch(
+                    model=model, 
+                    data_loader=valid_loader, 
+                    epoch=epoch, 
+                    validate=True, 
+                    num_steps=valid_num_steps,
+                    obs_normalization_stats=obs_normalization_stats,
+                    action_normalization_stats=action_normalization_stats,)
             for k, v in step_log.items():
                 if k.startswith("Time_"):
                     data_logger.record("Timing_Stats/Valid_{}".format(k[5:]), v, epoch)
@@ -460,12 +481,11 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
             rollout_model = RolloutPolicy(
                 model,
                 obs_normalization_stats=obs_normalization_stats,
-                # action_normalization_stats=action_normalization_stats,
+                action_normalization_stats=action_normalization_stats,
             )
 
             num_episodes = config.experiment.rollout.n
-            print('start roll outs')
-            all_rollout_logs, video_paths = TrainUtils.rollout_with_stats(
+            all_rollout_logs, video_paths, action_info = TrainUtils.rollout_with_stats(
                 policy=rollout_model,
                 envs=envs,
                 horizon=config.experiment.rollout.horizon,
@@ -476,6 +496,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
                 epoch=epoch,
                 video_skip=1, #config.experiment.get("video_skip", 5),
                 terminate_on_success=config.experiment.rollout.terminate_on_success,
+                verbose = True,
             )
 
             # summarize results from rollouts to tensorboard and terminal
@@ -522,8 +543,8 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
                 env_meta=env_meta,
                 shape_meta=shape_meta,
                 ckpt_path=os.path.join(ckpt_dir, epoch_ckpt_name + ".pth"),
-                obs_normalization_stats=obs_normalization_stats
-                # action_normalization_stats=action_normalization_stats,
+                obs_normalization_stats=obs_normalization_stats,
+                action_normalization_stats=action_normalization_stats,
             )
 
         # Finally, log memory usage in MB
@@ -533,7 +554,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         print("\nEpoch {} Memory Usage: {} MB\n".format(epoch, mem_usage))
 
     # terminate logging
-    data_logger.close()
+    # data_logger.close()
 
     # # sync logs after closing data logger to make sure everything was transferred
     # if need_sync_results:

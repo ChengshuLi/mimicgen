@@ -47,10 +47,11 @@ python mimicgen/scripts/visualize_subtasks.py --dataset datasets/source_og/test_
 
 # sanity check with D0 to see whether the drift problem exist
 # TODO: D0 quickly raise cuda error, need to check why 
-python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_cup_task_D0.json --auto-remove-exp --num_demos 1 --bimanual
+python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_cup_task_D0.json --auto-remove-exp --num_demos 4 --bimanual
+
 
 # even with really small initial posiiton randomization range, the 
-python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_cup_task_D1.json --auto-remove-exp --num_demos 10 --bimanual
+python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_cup_task_D1.json --auto-remove-exp --num_demos 100 --bimanual
 
 # even with really small initial posiiton randomization range, the 
 python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_cup_task_D2.json --auto-remove-exp --num_demos 10 --bimanual
@@ -75,3 +76,7 @@ python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_s
 # 'external::external_sensor0::depth' # 128, 128
 # ])
 
+# copy the dataset to the right folder
+cd /tmp/core_datasets_og/test_tiago_cup/demo_src_test_tiago_cup_task_D0
+# copy the dataset to the right foler
+cp demo.hdf5 /home/mengdi/dataset/test_tiago_cup/demo_D1.hdf5

@@ -65,57 +65,59 @@ from mimicgen.configs import MG_TaskSpec
 from mimicgen.configs import config_factory as MG_ConfigFactory
 from mimicgen.datagen.data_generator import DataGenerator
 from mimicgen.env_interfaces.base import make_interface
+from mimicgen.train_scripts.train_debug import load_init_states
 
-# import doppelmaker
-# doppelmaker.import_og_dependencies()
+def sensor_customize_test_tiago_cup(env):
 
-# logger code from josiah
-def doppel_get_exp_dir(config):
-    """
-    Create experiment directory from config. If an identical experiment directory
-    exists and @auto_remove_exp_dir is False (default), the function will prompt 
-    the user on whether to remove and replace it, or keep the existing one and
-    add a new subdirectory with the new timestamp for the current run.
+    env.policy_rollout = True
+
+    # set up sensor positions
+    sensor = env.env._external_sensors['external_sensor0']
+    # facing robot
+    sensor.set_position_orientation(
+        position=torch.tensor([ 1.0304, -0.0309,  1.0272]),
+        orientation=torch.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
+        )
+    sensor.image_height = 180
+    sensor.image_width = 320
+    sensor._add_modality_to_backend(modality='depth_linear')
+    sensor._modalities = {"depth_linear", "rgb"}
+
+    # load basic metadata from training file
+    print("\n==== Using environment with the following metadata ====")
+    print(json.dumps(env.serialize(), indent=4))
+    print("")
+
+    # change the density of the objects
+    import omnigibson as og
+    state = og.sim.dump_state()
+    og.sim.stop()
+
+    coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
+    coffee_cup.links['base_link'].density = 30
+
+    paper_cup = env.env.scene.object_registry("name", "paper_cup")
+    paper_cup.links['base_link'].density = 100
+
+    og.sim.play()
+    og.sim.load_state(state)
+
+    # for _ in range(10): 
+    #     og.sim.render()
     
-    Returns:
-        log_dir (str): path to created log directory (sub-folder in experiment directory)
-        output_dir (str): path to created models directory (sub-folder in experiment directory)
-            to store model checkpoints
-        video_dir (str): path to video directory (sub-folder in experiment directory)
-            to store rollout videos
-    """
-    # timestamp for directory names
-    t_now = time.time()
-    time_str = datetime.datetime.fromtimestamp(t_now).strftime('%Y%m%d%H%M%S')
+    env.reset()
+    for _ in range(2): og.sim.step()
 
-    # create directory for where to dump model parameters, tensorboard logs, and videos
-    base_output_dir = os.path.expandvars(os.path.expanduser(config.train.output_dir))
-    base_output_dir = os.path.join(base_output_dir, config.experiment.name)
+    import torch as th
+    og.sim.viewer_camera.set_position_orientation(
+        position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+        orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+    )
+    # for _ in range(5): og.sim.render()
 
-    # only make model directory if model saving is enabled
-    output_dir = None
-    if config.experiment.save.enabled:
-        output_dir = os.path.join(base_output_dir, time_str, "models")
-        os.makedirs(output_dir)
+    return env
 
-    # tensorboard directory
-    log_dir = os.path.join(base_output_dir, time_str, "logs")
-    os.makedirs(log_dir)
-
-    # video directory
-    video_dir = os.path.join(base_output_dir, time_str, "videos")
-    os.makedirs(video_dir)
-
-    # # establish sync path for syncing important training results back
-    # set_absolute_sync_path(
-    #     output_dir=config.train.output_dir,
-    #     exp_name=config.experiment.name,
-    #     time_str=time_str,
-    # )
-
-    return log_dir, output_dir, video_dir, time_str
-
-def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=1, auto_remove_exp=False):
+def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_action_plot=False, start_epoch=1000):
     """
     Train a model using the algorithm.
     """
@@ -130,20 +132,33 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     # set num workers
     torch.set_num_threads(1)
 
-    if not auto_remove_exp:
-        # if we don't auto_remove existing experiment folder
-        # call this to create new time stamp folder in the same experiment folder
-        log_dir, ckpt_dir, video_dir, time_str = doppel_get_exp_dir(config)
-        # save_dir = os.path.join(config.train.output_dir, config.experiment.name)
-        # log_dir, ckpt_dir, video_dir = os.getpwd(), os.getcwd
-    else:
-        log_dir, ckpt_dir, video_dir = TrainUtils.get_exp_dir(config, auto_remove_exp_dir=auto_remove_exp)
+    log_dir = os.path.join(load_checkpoint_folder, "logs")
+    ckpt_dir = os.path.join(load_checkpoint_folder, "models")
+    video_dir = os.path.join(load_checkpoint_folder, "videos")
+    time_str = load_checkpoint_folder.split('/')[-1]
+    
+    # if log_dir and video_dir does not exist, create it -> happen when locally eval runs on cluster
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    if not os.path.exists(video_dir):
+        os.makedirs(video_dir)
         
     if config.experiment.logging.terminal_output_to_txt:
         # log stdout and stderr to a text file
         logger = PrintLogger(os.path.join(log_dir, 'log.txt'))
         sys.stdout = logger
         sys.stderr = logger
+
+    # # get the unique id of the run
+    # import wandb
+    # api = wandb.Api()
+    # # project = api.project("tiago_cup")
+    # runs = api.runs("tiago_cup")
+    # for run in runs:
+    #     if run.name == time_str:
+    #         run_id = run.id
+    # print(run_id)
+
 
     # read config to set up metadata for observation modalities (e.g. detecting rgb observations), load randomizers here, changed to CropRandomizer
     ObsUtils.initialize_obs_utils_with_config(config)
@@ -165,7 +180,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         action_keys=config.train.action_keys,
         all_obs_keys=config.all_obs_keys,
         # ds_format=ds_format,
-        verbose=True
+        verbose=False
     )
 
     print(shape_meta)
@@ -180,89 +195,35 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     env_meta = get_env_metadata_from_dataset(dataset_path=source_dataset_path, ds_format=ds_format)
 
     # env args: cameras to use come from debug camera video to write, or from observation collection
-    if config.experiment.rollout.enabled:
-        envs = OrderedDict()
+    envs = OrderedDict()
 
-        env = RobomimicUtils.create_env(
-            env_meta=env_meta,
-            env_class=None,
-            env_name=mg_config.experiment.task.name,
-            robot=mg_config.experiment.task.robot,
-            gripper=mg_config.experiment.task.gripper,
-            camera_names=mg_config.obs.camera_names,
-            camera_height=mg_config.obs.camera_height,
-            camera_width=mg_config.obs.camera_width,
-            render=config.experiment.render, 
-            render_offscreen=False, #config.experiment.render_video,
-            use_image_obs=False,
-            use_depth_obs=False,
-        )
+    env = RobomimicUtils.create_env(
+        env_meta=env_meta,
+        env_class=None,
+        env_name=mg_config.experiment.task.name,
+        robot=mg_config.experiment.task.robot,
+        gripper=mg_config.experiment.task.gripper,
+        camera_names=mg_config.obs.camera_names,
+        camera_height=mg_config.obs.camera_height,
+        camera_width=mg_config.obs.camera_width,
+        render=config.experiment.render, 
+        render_offscreen=False, #config.experiment.render_video,
+        use_image_obs=False,
+        use_depth_obs=False,
+        init_curobo=False,
+    )
 
+    env = sensor_customize_test_tiago_cup(env)
 
-        # load basic metadata from training file
-        print("\n==== Using environment with the following metadata ====")
-        print(json.dumps(env.serialize(), indent=4))
-        print("")
-
-        import omnigibson as og
-        state = og.sim.dump_state()
-        og.sim.stop()
-
-        coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
-        coffee_cup.links['base_link'].density = 30
-
-        paper_cup = env.env.scene.object_registry("name", "paper_cup")
-        paper_cup.links['base_link'].density = 100
-
-        og.sim.play()
-        og.sim.load_state(state)
-        for _ in range(10): 
-            og.sim.render()
-
-        # TODO: the following wrapper line will cause error
-        # AssertionError: Invalid wrapper type received! Valid options are: dict_keys(['DataWrapper', 'DataCollectionWrapper', 'DataPlaybackWrapper']), got: None
-        # env.wrap_env()
-
-        # change viewer camera position
-        # set camera postion
-        import torch as th
-        og.sim.viewer_camera.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        )
-        for _ in range(5): og.sim.render()
-
-        env = EnvUtils.wrap_env_from_config(env, config=config) # apply environment warpper, if applicable
-        envs[env.name] = env
-        print(envs[env.name])
+    env = EnvUtils.wrap_env_from_config(env, config=config) # apply environment warpper, if applicable
+    envs[env.name] = env
+    print(envs[env.name])
     
     print("")
-    
-    print("\n============= New Training Run with Config =============")
-    print(config)
-    print("")
-
-    
-    # # env_all_obj_meta = get_env_all_objects_initialization_from_dataset(dataset_path=dataset_path, ds_format="robomimic")   # TODO: does not implement other ds_format
-    # env_all_obj_meta = get_env_all_objects_initialization_from_dataset(dataset_path=dataset_path)
-    
-    # # update env meta if applicable
-    # # from robomimic.utils.script_utils import deep_update
-    # # deep_update(env_meta, config.experiment.env_meta_update_dict)
-
-
 
     if config.experiment.env is not None:
         env_meta["env_name"] = config.experiment.env
         print("=" * 30 + "\n" + "Replacing Env to {}\n".format(env_meta["env_name"]) + "=" * 30)
-    
-    # # Uncomment the following 3 lines if you want to visualize
-    # # og.sim.viewer_camera.add_modality("camera")
-    # # og.sim.viewer_camera.add_modality("depth_linear")
-    # # og.sim.viewer_camera.set_position_orientation([1.325376001942603, -1.9173018358217684, 1.254665264292596], [0.5581211975257528, 2.0704457018914e-07, -1.4148466577544682e-17, 0.8297594403635169])
-
-    
-    # setup for a new training run
 
     # change the wandb name to the current time_str
     if config.experiment.logging.log_wandb:
@@ -270,89 +231,37 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         config.experiment.name = time_str
         config.lock()
 
-    data_logger = DataLogger(
-        log_dir,
-        config,
-        log_tb=config.experiment.logging.log_tb,
-        log_wandb=config.experiment.logging.log_wandb,
-    )
-    model = algo_factory(
-        algo_name=config.algo_name,
-        config=config,
-        obs_key_shapes=shape_meta["all_shapes"],
-        ac_dim=shape_meta["ac_dim"],
-        device=device,
-    )
 
-    # Load checkpoint
-    if load_checkpoint_path:
-        ckpt_dict = load_dict_from_checkpoint(load_checkpoint_path)
-        model.deserialize(ckpt_dict['model'])
-        print(f"Loaded model weights from checkpoint")
-    
-    # save the config as a json file
-    with open(os.path.join(log_dir, '..', 'config.json'), 'w') as outfile:
-        json.dump(config, outfile, indent=4)
-
-    print("\n============= Model Summary =============")
-    print(model)  # print model summary
+    print("\n============= Loading data =============")
     print("")
 
-    # load training data
+    # data_logger = DataLogger(
+    #     log_dir,
+    #     config,
+    #     log_tb=config.experiment.logging.log_tb,
+    #     log_wandb=config.experiment.logging.log_wandb,
+    #     run_id = run_id,
+    # )
+    # get stats for normalization observations and actions
     trainset, validset = TrainUtils.load_data_for_training(
         config, obs_keys=shape_meta["all_obs_keys"])
-    train_sampler = trainset.get_dataset_sampler()
-    print("\n============= Training Dataset =============")
-    print(trainset)
-    print("")
-    if validset is not None:
-        print("\n============= Validation Dataset =============")
-        print(validset)
-        print("")
     
-    # maybe retreve statistics for normalizing observations
-    obs_normalization_stats = None
-    if config.train.hdf5_normalize_obs:
-        obs_normalization_stats = trainset.get_obs_normalization_stats()
+    # now the actions are retrieved from the model saved checkpoint
+    # # maybe retreve statistics for normalizing observations
+    # obs_normalization_stats = None
+    # if config.train.hdf5_normalize_obs:
+    #     obs_normalization_stats = trainset.get_obs_normalization_stats()
 
-    # rename mean to offset, std to scale
-    if obs_normalization_stats is not None:
-        obs_normalization_stats = {
-            k: {
-                "offset": v["mean"],
-                "scale": v["std"],
-            }
-            for k, v in obs_normalization_stats.items()
-        }
-
-    # maybe retreve statistics for normalizing actions
+    # # rename mean to offset, std to scale
+    # if obs_normalization_stats is not None:
+    #     obs_normalization_stats = {
+    #         k: {
+    #             "offset": v["mean"],
+    #             "scale": v["std"],
+    #         }
+    #         for k, v in obs_normalization_stats.items()
+    #     }
     # action_normalization_stats = trainset.get_action_normalization_stats()
-    # import pdb; pdb.set_trace()
-
-    # initialize data loaders
-    train_loader = DataLoader(
-        dataset=trainset,
-        sampler=train_sampler,
-        batch_size=config.train.batch_size,
-        shuffle=(train_sampler is None),
-        num_workers=config.train.num_data_workers,
-        drop_last=True
-    )
-
-    if config.experiment.validate:
-        # cap num workers for validation dataset at 1
-        num_workers = min(config.train.num_data_workers, 1)
-        valid_sampler = validset.get_dataset_sampler()
-        valid_loader = DataLoader(
-            dataset=validset,
-            sampler=valid_sampler,
-            batch_size=config.train.batch_size,
-            shuffle=(valid_sampler is None),
-            num_workers=num_workers,
-            drop_last=True
-        )
-    else:
-        valid_loader = None
 
     # print all warnings before training begins
     print("*" * 50)
@@ -361,218 +270,206 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
     print("*" * 50)
     print("")
 
-    # main training loop
+
+    demo_name = trainset.demos[0]
+    demo_actions = trainset.get_action_traj(demo_name)['actions']
+    replay_from_demo = False
+    if replay_from_demo:
+        print("\n============= Start replaying the actions from the demostration =============")
+        print("")
+
+        env.reset()
+        for step in range(demo_actions.shape[0]):
+            ob_dict, r, done, truncated, _ = env.step(demo_actions[step])
+            print("step: {}, reward: {}, done: {}, truncated: {}".format(step, r, done, truncated))
+            if done:
+                break
+        
+        print('finished policy rollout one episode')
+        breakpoint()
+        # exit the python code
+        sys.exit()
+
+    init_states = None
+
+    check_performance_on_trianing_config = True
+    if check_performance_on_trianing_config:
+        # load initial states in the collected demo, so that we can check the trianing performance
+        init_states_all = load_init_states(data_name='D1_10')
+        init_states_list = []
+        for demo_key in init_states_all:
+            init_states = {} 
+            # random sample a key from the demo 
+            init_states["states"] = init_states_all[demo_key]
+            init_states_list.append(init_states)
+
+    print("\n============= Start rollout evaluation =============")
+    print("")
+
     best_valid_loss = None
     # TODO: need to change the return and success rate in the environment
-    best_return = {k: -np.inf for k in envs} if config.experiment.rollout.enabled else None
-    best_success_rate = {k: -1. for k in envs} if config.experiment.rollout.enabled else None
+    best_return = {k: -np.inf for k in envs}
+    best_success_rate = {k: -1. for k in envs}
     last_ckpt_time = time.time()
-
-    # need_sync_results = False #(Macros.RESULTS_SYNC_PATH_ABS is not None)
-    # if need_sync_results:
-    #     # these paths will be updated after each evaluation
-    #     best_ckpt_path_synced = None
-    #     best_video_path_synced = None
-    #     last_ckpt_path_synced = None
-    #     last_video_path_synced = None
-    #     log_dir_path_synced = os.path.join(Macros.RESULTS_SYNC_PATH_ABS, "logs")
-
-    # number of learning steps per epoch (defaults to a full dataset pass)
-    train_num_steps = config.experiment.epoch_every_n_steps
-    valid_num_steps = config.experiment.validation_epoch_every_n_steps
-
-    # TODO: need to enable this if loading checkpoint
-    # # if we load checkpoint, and did not specify starting epoch idx,
-    # # infer starting epoch index from checkpoint name
-    # if load_checkpoint_path and start_epoch_idx == 1:
-    #     ckpt_name = os.path.basename(load_checkpoint_path)  
-    #     start_epoch_idx = get_epochs_trained(ckpt_name) + 1
-
-    start_epoch_idx = 1
     
-    for epoch in range(start_epoch_idx, config.train.num_epochs + 1): # epoch numbers start at 1
-        step_log = TrainUtils.run_epoch(
-            model=model,
-            data_loader=train_loader,
+    # Evaluate the model by by running rollouts
+
+    # do rollouts at fixed rate or if it's time to save a new ckpt
+    video_paths = None
+    rollout_check = True
+    did_rollouts = False
+
+    # read file names in the load_checkpoint_folder
+    load_checkpoint_files = os.listdir(ckpt_dir)
+
+    epoch_list = [int(file_name.split('_')[-1].split('.')[0]) for file_name in load_checkpoint_files]
+    epoch_list.sort()
+
+    # epoch_list = [epoch_list[-1]]
+    epoch_list = [epoch for epoch in epoch_list if epoch >= start_epoch]
+
+    if epoch_list == []:
+        print('No checkpoint found for epoch >= {}'.format(start_epoch))
+        return None
+    
+    epoch_list.sort(reverse=True)   
+
+    # epoch_list = [100, 300, 500, 700, 900, 1000, 1200, 1400, 1600, 1800, 2000, 2200]
+    epoch_list = [1500, 2200]
+
+
+    start_time = time.time()
+    
+    all_epoch_rollout_logs_save_to_ext = {}
+
+    for epoch in epoch_list:
+        print("")
+        print("\n============= Epoch {} Rollouts =============".format(epoch))
+        print("")
+
+        load_checkpoint_path = os.path.join(ckpt_dir, 'model_epoch_{}.pth'.format(epoch))
+        if not os.path.exists(load_checkpoint_path):
+            print('Checkpoint at provided path {} not found!'.format(load_checkpoint_path))
+            # raise Exception("Checkpoint at provided path {} not found!".format(load_checkpoint_path))
+            continue
+
+        rollout_policy, ckpt_dict, rollout_model = FileUtils.policy_from_checkpoint(device=device, ckpt_path=load_checkpoint_path, ckpt_dict=None, verbose=False)
+
+        # debugging whether model are different
+        check_whether_model_are_different = False
+        if check_whether_model_are_different:
+            print(f"Loaded model weights from checkpoint")
+            breakpoint()
+            sc_weight = ckpt_dict['model']['nets']['policy.obs_encoder.nets.obs.obs_nets.combined::point_cloud.layers.0.weight']
+            load_checkpoint_path = os.path.join(ckpt_dir, 'model_epoch_{}.pth'.format(10))
+            rollout_policy, ckpt_dict_0, rollout_model_0 = FileUtils.policy_from_checkpoint(device=device, ckpt_path=load_checkpoint_path, ckpt_dict=None, verbose=True)
+            sc_weight_0 = ckpt_dict_0['model']['nets']['policy.obs_encoder.nets.obs.obs_nets.combined::point_cloud.layers.0.weight']
+            print(sc_weight == sc_weight_0)
+
+        num_episodes = config.experiment.rollout.n
+        print('start rollouts')
+        all_rollout_logs, video_paths, action_info = TrainUtils.rollout_with_stats(
+            policy=rollout_policy,
+            envs=envs,
+            horizon=config.experiment.rollout.horizon,
+            use_goals=config.use_goals,
+            num_episodes=num_episodes,
+            render=False,
+            video_dir=video_dir if config.experiment.render_video else None,
             epoch=epoch,
-            num_steps=train_num_steps,
-            obs_normalization_stats=obs_normalization_stats,
+            video_skip=1, #config.experiment.get("video_skip", 5),
+            terminate_on_success=config.experiment.rollout.terminate_on_success,
+            demo_actions=demo_actions,
+            check_action_plot=check_action_plot,
+            verbose=True,
+            init_states_list=init_states_list,
         )
-        model.on_epoch_end(epoch)
 
-        # setup checkpoint path
-        epoch_ckpt_name = "model_epoch_{}".format(epoch)
-
-        # check for recurring checkpoint saving conditions
-        should_save_ckpt = False
-        if config.experiment.save.enabled:
-            time_check = (config.experiment.save.every_n_seconds is not None) and \
-                (time.time() - last_ckpt_time > config.experiment.save.every_n_seconds)
-            epoch_check = (config.experiment.save.every_n_epochs is not None) and \
-                (epoch > 0) and (epoch % config.experiment.save.every_n_epochs == 0)
-            epoch_list_check = (epoch in config.experiment.save.epochs)
-            should_save_ckpt = (time_check or epoch_check or epoch_list_check)
-        ckpt_reason = None
-        if should_save_ckpt:
-            last_ckpt_time = time.time()
-            ckpt_reason = "time"
-
-        print("Train Epoch {}".format(epoch))
-        print(json.dumps(step_log, sort_keys=True, indent=4))
-        for k, v in step_log.items():
-            if k.startswith("Time_"):
-                data_logger.record("Timing_Stats/Train_{}".format(k[5:]), v, epoch)
-            else:
-                data_logger.record("Train/{}".format(k), v, epoch)
-
-        # Evaluate the model on validation set
-        if config.experiment.validate:
-            with torch.no_grad():
-                step_log = TrainUtils.run_epoch(model=model, data_loader=valid_loader, epoch=epoch, validate=True, num_steps=valid_num_steps)
-            for k, v in step_log.items():
+        # summarize results from rollouts to tensorboard and terminal
+        for env_name in all_rollout_logs:
+            rollout_logs = all_rollout_logs[env_name]
+            for k, v in rollout_logs.items():
                 if k.startswith("Time_"):
-                    data_logger.record("Timing_Stats/Valid_{}".format(k[5:]), v, epoch)
+                    print("Timing_Stats/Rollout_{}_{}".format(env_name, k[5:]), v, epoch)
+                    # data_logger.record("Timing_Stats/Rollout_{}_{}".format(env_name, k[5:]), v, epoch)
                 else:
-                    data_logger.record("Valid/{}".format(k), v, epoch)
+                    print("Rollout/{}/{}".format(k, env_name), v, epoch)
+                    # data_logger.record("Rollout/{}/{}".format(k, env_name), v, epoch, log_stats=True)
 
-            print("Validation Epoch {}".format(epoch))
-            print(json.dumps(step_log, sort_keys=True, indent=4))
-
-            # save checkpoint if achieve new best validation loss
-            valid_check = "Loss" in step_log
-            if valid_check and (best_valid_loss is None or (step_log["Loss"] <= best_valid_loss)):
-                best_valid_loss = step_log["Loss"]
-                if config.experiment.save.enabled and config.experiment.save.on_best_validation:
-                    epoch_ckpt_name += "_best_validation_{}".format(best_valid_loss)
-                    should_save_ckpt = True
-                    ckpt_reason = "valid" if ckpt_reason is None else ckpt_reason
-
-        # Evaluate the model by by running rollouts
-
-        # do rollouts at fixed rate or if it's time to save a new ckpt
-        video_paths = None
-        rollout_check = (epoch % config.experiment.rollout.rate == 0) or (should_save_ckpt and ckpt_reason == "time")
-        did_rollouts = False
+            print("\nEpoch {} Rollouts took {}s (avg) with results:".format(epoch, rollout_logs["time"]))
+            print('Env: {}'.format(env_name))
         
-        if config.experiment.rollout.enabled and (epoch > config.experiment.rollout.warmstart) and rollout_check:
+        epoch_ckpt_name = "model_epoch_{}".format(epoch)
+        # checkpoint and video saving logic
+        updated_stats = TrainUtils.should_save_from_rollout_logs(
+            all_rollout_logs=all_rollout_logs,
+            best_return=best_return,
+            best_success_rate=best_success_rate,
+            epoch_ckpt_name=epoch_ckpt_name,
+            save_on_best_rollout_return=config.experiment.save.on_best_rollout_return,
+            save_on_best_rollout_success_rate=config.experiment.save.on_best_rollout_success_rate,
+        ) # saved based on the best_rollout_success_rate
+        # {'best_return': {'test_tiago_cup_D0': 1.0}, 'best_success_rate': {'test_tiago_cup_D0': 1.0}, 'epoch_ckpt_name': 'model_epoch_1860_test_tiago_cup_D0_success_1.0', 'should_save_ckpt': True, 'ckpt_reason': 'success'}
 
-            # wrap model as a RolloutPolicy to prepare for rollouts
-            rollout_model = RolloutPolicy(
-                model,
-                obs_normalization_stats=obs_normalization_stats,
-                # action_normalization_stats=action_normalization_stats,
-            )
-
-            num_episodes = config.experiment.rollout.n
-            print('start roll outs')
-            all_rollout_logs, video_paths = TrainUtils.rollout_with_stats(
-                policy=rollout_model,
-                envs=envs,
-                horizon=config.experiment.rollout.horizon,
-                use_goals=config.use_goals,
-                num_episodes=num_episodes,
-                render=False,
-                video_dir=video_dir if config.experiment.render_video else None,
-                epoch=epoch,
-                video_skip=1, #config.experiment.get("video_skip", 5),
-                terminate_on_success=config.experiment.rollout.terminate_on_success,
-            )
-
-            # summarize results from rollouts to tensorboard and terminal
-            for env_name in all_rollout_logs:
-                rollout_logs = all_rollout_logs[env_name]
-                for k, v in rollout_logs.items():
-                    if k.startswith("Time_"):
-                        data_logger.record("Timing_Stats/Rollout_{}_{}".format(env_name, k[5:]), v, epoch)
-                    else:
-                        data_logger.record("Rollout/{}/{}".format(k, env_name), v, epoch, log_stats=True)
-
-                print("\nEpoch {} Rollouts took {}s (avg) with results:".format(epoch, rollout_logs["time"]))
-                print('Env: {}'.format(env_name))
-                print(json.dumps(rollout_logs, sort_keys=True, indent=4))
-
-            # checkpoint and video saving logic
-            updated_stats = TrainUtils.should_save_from_rollout_logs(
-                all_rollout_logs=all_rollout_logs,
-                best_return=best_return,
-                best_success_rate=best_success_rate,
-                epoch_ckpt_name=epoch_ckpt_name,
-                save_on_best_rollout_return=config.experiment.save.on_best_rollout_return,
-                save_on_best_rollout_success_rate=config.experiment.save.on_best_rollout_success_rate,
-            )
-            best_return = updated_stats["best_return"]
-            best_success_rate = updated_stats["best_success_rate"]
-            epoch_ckpt_name = updated_stats["epoch_ckpt_name"]
-            should_save_ckpt = (config.experiment.save.enabled and updated_stats["should_save_ckpt"]) or should_save_ckpt
-            if updated_stats["ckpt_reason"] is not None:
-                ckpt_reason = updated_stats["ckpt_reason"]
-            did_rollouts = True
+        best_return = updated_stats["best_return"]
+        best_success_rate = updated_stats["best_success_rate"]
+        epoch_ckpt_name = updated_stats["epoch_ckpt_name"]
+        should_save_ckpt = (config.experiment.save.enabled and updated_stats["should_save_ckpt"]) or should_save_ckpt
+        if updated_stats["ckpt_reason"] is not None:
+            ckpt_reason = updated_stats["ckpt_reason"] # 'success'
+        did_rollouts = True
 
         # Only keep saved videos if the ckpt should be saved (but not because of validation score)
         should_save_video = (should_save_ckpt and (ckpt_reason != "valid")) or config.experiment.keep_all_videos
+        # config.experiment.keep_all_videos is currently true so the following will not call
         if video_paths is not None and not should_save_video:
+            print('breakpoint in should save video')
+            breakpoint()
             for env_name in video_paths:
                 os.remove(video_paths[env_name])
+        print("")
+        print('best_return', best_return, 'best_success_rate', best_success_rate, 'epoch_ckpt_name', epoch_ckpt_name)
+        print("")
 
         # Save model checkpoints based on conditions (success rate, validation loss, etc)
         if should_save_ckpt:
             TrainUtils.save_model(
-                model=model,
+                model=rollout_model,
                 config=config,
                 env_meta=env_meta,
                 shape_meta=shape_meta,
                 ckpt_path=os.path.join(ckpt_dir, epoch_ckpt_name + ".pth"),
-                obs_normalization_stats=obs_normalization_stats
-                # action_normalization_stats=action_normalization_stats,
+                obs_normalization_stats=rollout_policy.obs_normalization_stats,
+                action_normalization_stats=rollout_policy.action_normalization_stats,
             )
+        all_epoch_rollout_logs_save_to_ext[epoch] = {}
+        for env_name in all_rollout_logs:
+            rollout_logs = all_rollout_logs[env_name]
+            all_epoch_rollout_logs_save_to_ext[epoch][env_name] = rollout_logs
 
-        # Finally, log memory usage in MB
-        process = psutil.Process(os.getpid())
-        mem_usage = int(process.memory_info().rss / 1000000)
-        data_logger.record("System/RAM Usage (MB)", mem_usage, epoch)
-        print("\nEpoch {} Memory Usage: {} MB\n".format(epoch, mem_usage))
-
-    # terminate logging
-    data_logger.close()
-
-    # # sync logs after closing data logger to make sure everything was transferred
-    # if need_sync_results:
-    #     print("Sync results back to sync path: {}".format(Macros.RESULTS_SYNC_PATH_ABS))
-    #     # sync logs dir
-    #     if os.path.exists(log_dir_path_synced):
-    #         shutil.rmtree(log_dir_path_synced)
-    #     shutil.copytree(log_dir, log_dir_path_synced)
+        # save all_epoch_success_rate to a txt file
+        with open(os.path.join(load_checkpoint_folder, 'all_epoch_rollout_logs_save_to_ext.txt'), 'w') as f:
+            f.write(str(all_epoch_rollout_logs_save_to_ext))
     
-    # collect important statistics
-    important_stats = dict()
-    prefix = "Rollout/Success_Rate/"
-    exception_prefix = "Rollout/Exception_Rate/"
-    for k in data_logger._data:
-        if k.startswith(prefix):
-            suffix = k[len(prefix):]
-            stats = data_logger.get_stats(k)
-            important_stats["{}-max".format(suffix)] = stats["max"]
-            important_stats["{}-mean".format(suffix)] = stats["mean"]
-        elif k.startswith(exception_prefix):
-            suffix = k[len(exception_prefix):]
-            stats = data_logger.get_stats(k)
-            important_stats["{}-exception-rate-max".format(suffix)] = stats["max"]
-            important_stats["{}-exception-rate-mean".format(suffix)] = stats["mean"]
+        # with open(os.path.join(load_checkpoint_folder, 'all_epoch_rollout_logs_save_to_ext.txt'), "w") as f:
+        #     json.dump(str(all_epoch_rollout_logs_save_to_ext), f, indent=4)
 
-    # add in time taken
-    important_stats["time spent (hrs)"] = "{:.2f}".format((time.time() - start_time) / 3600.)
-
-    # write stats to disk
-    json_file_path = os.path.join(log_dir, "important_stats.json")
-    with open(json_file_path, 'w') as f:
-        # preserve original key ordering
-        json.dump(important_stats, f, sort_keys=False, indent=4)
+    # Finally, log memory usage in MB
+    process = psutil.Process(os.getpid())
+    mem_usage = int(process.memory_info().rss / 1000000)
+    print("System/RAM Usage (MB)", mem_usage, epoch)
+    print("\nEpoch {} Memory Usage: {} MB\n".format(epoch, mem_usage))
+    print("")
+    print('*********************************total time used for rollout evaluation')
+    print(time.time() - start_time)
+    print("")
+    
     
     if env_meta["type"] == EnvUtils.EB.EnvType.OG_TYPE:
         import omnigibson as og
         og.shutdown()
 
-    return important_stats
+    return None
 
 
 def main(args):
@@ -609,28 +506,11 @@ def main(args):
         config.train.output_dir = args.output
 
     # get torch device
+    config.train.cuda = True # TODO: to save memory, put the model on cpu
     device = TorchUtils.get_torch_device(try_to_use_cuda=config.train.cuda)
 
-    # maybe modify config for debugging purposes
-    if args.debug:
-        Macros.DEBUG = True
-
-        # shrink length of training to test whether this run is likely to crash
-        config.unlock()
-        config.lock_keys()
-
-        # train and validate (if enabled) for 3 gradient steps, for 2 epochs
-        config.experiment.epoch_every_n_steps = 3
-        config.experiment.validation_epoch_every_n_steps = 3
-        config.train.num_epochs = 2
-
-        # if rollouts are enabled, try 2 rollouts at end of each epoch, with 10 environment steps
-        config.experiment.rollout.rate = 1
-        config.experiment.rollout.n = 2
-        config.experiment.rollout.horizon = 10
-
-        # send output to a temporary directory
-        config.train.output_dir = "/tmp/tmp_trained_models"
+    print('device', device)
+    # breakpoint()
 
     # lock config to prevent further modifications and ensure missing keys raise errors
     config.lock()
@@ -639,21 +519,17 @@ def main(args):
     res_str = "finished run successfully!"
     important_stats = None
     try:
-        important_stats = train(config=config, mg_config=mg_config, device=device, auto_remove_exp=args.auto_remove_exp)
+        important_stats = evaluate_w_rollout(
+            config=config, 
+            mg_config=mg_config, 
+            device=device,
+            load_checkpoint_folder=args.load_checkpoint_folder,
+            check_action_plot=args.debug,
+            start_epoch=args.start_epoch,
+            )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
     print(res_str)
-    if important_stats is not None:
-        important_stats = json.dumps(important_stats, indent=4)
-        print("\nRollout Success Rate Stats")
-        print(important_stats)
-
-        # maybe sync important stats back
-        if Macros.RESULTS_SYNC_PATH_ABS is not None:
-            json_file_path = os.path.join(Macros.RESULTS_SYNC_PATH_ABS, "important_stats.json")
-            with open(json_file_path, 'w') as f:
-                # preserve original key ordering
-                json.dump(important_stats, f, sort_keys=False, indent=4)
 
     # maybe give slack notification
     if Macros.SLACK_TOKEN is not None:
@@ -729,9 +605,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "--debug",
         action='store_true',
-        help="set this flag to run a quick training run for debugging purposes"
+        help="set this flag to plot actions debugging purposes"
     )
 
+    parser.add_argument(
+        "--load_checkpoint_folder",
+        type=str,
+        default=None,
+        help="the checkpoint folder used to load the model",
+    )
+
+    parser.add_argument(
+        "--start_epoch",
+        type=int,
+        default=1000,
+        help="the start epoch to evaluate the model",
+    )
+
+    # globals()['POLICY_ROLLOUT'] = True
+
+    # breakpoint()
     args = parser.parse_args()
     main(args)
 

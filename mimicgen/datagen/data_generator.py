@@ -20,6 +20,7 @@ from mimicgen.datagen.selection_strategy import make_selection_strategy
 from mimicgen.datagen.waypoint import WaypointSequence, WaypointTrajectory
 
 import omnigibson as og
+from omnigibson.object_states.contact_bodies import ContactBodies
 
 class DataGenerator(object):
     """
@@ -291,8 +292,13 @@ class DataGenerator(object):
         elif distance_left_arm_to_traj_left_arm_object > distance_right_arm_to_traj_left_arm_object and distance_right_arm_to_traj_right_arm_object > distance_right_arm_to_traj_left_arm_object:
             change_role = True
             print('change role')
+            breakpoint()
         else:
-            raise ValueError('The distance comparison heuristic is not applicable, check corner cases')
+            # TODO: if the change arm role constaints are not satisfied, will keep the original arm role
+            print('distance comparison heuristic is not applicable, check corner cases')
+            change_role = False
+            breakpoint()
+            # raise ValueError('The distance comparison heuristic is not applicable, check corner cases')
 
         return change_role
 
@@ -404,24 +410,95 @@ class DataGenerator(object):
         env.reset()
         new_initial_state = env.get_state()
 
+
+        # # # check collisions between robot and all other objects
+        # # print('breakpoint before collision check')
+        # # breakpoint()
+        # # robot = env.robots[0]
+        # # collision_stats = robot.states[ContactBodies].get_state()
+
+        # # print('breakpoint in run_rollout to check contacts')
+        # # breakpoint()
+        # def check_reset_requirement():
+        #     need_to_reset = False
+        #     robot = env.env.robots[0]
+        #     contact_prim_set = robot.states[ContactBodies].get_value()
+        #     for prim in contact_prim_set:
+        #         print(prim.name, 'is in contact')
+        #     contact_name_list = [prim.name for prim in contact_prim_set]
+        #     for name in contact_name_list:
+        #         if 'coffee_cup' in name:
+        #             need_to_reset = True
+        #         if 'paper_cup' in name:
+        #             need_to_reset = True
+        #     return need_to_reset
+        
+        # reset_max_times = 2
+
+        # breakpoint()
+
+        # reset_count = 1
+        # while check_reset_requirement() and reset_count < reset_max_times:
+        #     print('need to reset')
+        #     reset_count += 1
+        #     env.reset()
+        #     breakpoint()
+
         # set camera postion
         import omnigibson as og
         import torch as th
         og.sim.viewer_camera.set_position_orientation(
             position=th.tensor([ 1.7492, -0.0424,  1.5371]),
             orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        )
+        ) # viewer position
 
         # TODO: need to change the sensor resolution based on requirement
         sensor = env.env._external_sensors['external_sensor0']
-        sensor.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-            )
-        sensor.image_height = 720
-        sensor.image_width = 1280
+
+        # sensor config option 1: facing robot
+        # sensor.set_position_orientation(
+        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+        #     )
         
+        # sensor config option 2: camera zoomed in facing the robot
+        # sensor.set_position_orientation(
+        #     position=th.tensor([ 1.0693, -0.0211,  0.9937]),
+        #     orientation=th.tensor([0.2479, 0.2451, 0.6590, 0.6665]),
+            # )
+        sensor.set_position_orientation(
+            position=th.tensor([ 1.0304, -0.0309,  1.0272]),
+            orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
+            )
+
+        # sensor config option 3: camera zoomed in
+        # sensor.set_position_orientation(
+        #     position=th.tensor([ 0.1300, -0.0262,  0.8532]),
+        #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
+            # )
+
+        # sensor.image_height = 360
+        # sensor.image_width = 640
+
+        sensor.image_height = 180
+        sensor.image_width = 320
+                
+        sensor._add_modality_to_backend(modality='depth_linear')
+        sensor._modalities = {"depth_linear", "rgb"}
+
         for _ in range(5): og.sim.render()
+
+        print(sensor.intrinsic_matrix)
+        print(sensor.get_position_orientation())
+
+        # TODO: need to change the agent sensor correspondingly
+
+        external_sensor_info = {
+            "pose": sensor.get_position_orientation(),
+            "intrinsic_matrix": sensor.intrinsic_matrix,
+            "image_height": sensor.image_height,
+            "image_width": sensor.image_width,
+        }
 
         # parse MP_end_step from the configuration file
         end_step_of_MP_local = self.parse_MP_end_step_local()
@@ -711,6 +788,9 @@ class DataGenerator(object):
                     # attached_obj=attached_obj[phase_ind][subtask_ind_reordered],
                     attached_obj = attached_obj_dict,
                 )
+                if exec_results is None:
+                    print('failed to execute the trajectory, breakpoint in data_generator.py')
+                    return None
 
                 # check that trajectory is non-empty
                 if len(exec_results["states"]) > 0:
@@ -747,7 +827,8 @@ class DataGenerator(object):
             src_demo_labels=generated_src_demo_labels,
             mp_end_steps=generated_demo_mp_end_steps,
             subtask_lengths=generated_demo_subtask_lengths,
+            external_sensor_info=external_sensor_info,
         )
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         print('before returning the results')
         return results

@@ -490,6 +490,10 @@ class WaypointTrajectory(object):
             # print("success status", success_status)
             # breakpoint()
             # TODO: change the logic, if the motion planner fails, then we reply the trajectory
+            if not success_status:
+                print('motion planning failed, breakpoint in waypoint.py')
+                results = None
+                return results
             assert success_status, "motion planning failed"
 
             # import pdb; pdb.set_trace()
@@ -607,15 +611,16 @@ class WaypointTrajectory(object):
             replay_action[env_interface.gripper_action_dim[0]] = left_waypoint.gripper_action[0]
             replay_action[env_interface.gripper_action_dim[1]] = right_waypoint.gripper_action[1]
 
-            # Update the markers for visualization
-            if env.eef_current_marker_left is not None:
-                env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-            if env.eef_current_marker_right is not None:
-                env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            if env.eef_goal_marker_left is not None:
-                env.eef_goal_marker_left.set_position_orientation(position=pose[0:3, 3], orientation=T.mat2quat(th.tensor(pose[0:3, 0:3])))
-            if env.eef_goal_marker_right is not None:
-                env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
+            # TODO: need to remove the marker when collecting the final data
+            # # Update the markers for visualization
+            # if env.eef_current_marker_left is not None:
+            #     env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+            # if env.eef_current_marker_right is not None:
+            #     env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+            # if env.eef_goal_marker_left is not None:
+            #     env.eef_goal_marker_left.set_position_orientation(position=pose[0:3, 3], orientation=T.mat2quat(th.tensor(pose[0:3, 0:3])))
+            # if env.eef_goal_marker_right is not None:
+            #     env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
 
             state = env.get_state()["states"]
             # obs = env.get_observation()

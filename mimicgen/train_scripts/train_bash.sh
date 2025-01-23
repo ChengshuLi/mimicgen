@@ -1,1 +1,9 @@
-sbatch start_sbatch.sh 'python train.py --config /home/mengdi/Dropbox/Research/00-BEHAVIOR/b1k-mimicgen/mimicgen/mimicgen/scripts/train_configs/test_tiago_cup_plr_0.001_gmm_t_rnnd_400_mlp_1024.json' 'python train.py --config /home/mengdi/Dropbox/Research/00-BEHAVIOR/b1k-mimicgen/mimicgen/mimicgen/scripts/train_configs/test_tiago_cup_plr_0.001_gmm_t_rnnd_400_mlp_1024.json'
+# D1
+
+sbatch start_sbatch.sh 'python mimicgen/train_scripts/train_mimicgen.py --config mimicgen/train_scripts/train_configs/train_config_cup_diffusion_D1.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_cup_task_D1.json'
+
+# sbatch start_sbatch.sh 'python mimicgen/train_scripts/train_mimicgen.py --config mimicgen/train_scripts/train_configs/train_config_cup_diffusion_D1_no_jpos.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_cup_task_D1.json'
+
+# sbatch start_sbatch.sh 'python mimicgen/train_scripts/train_mimicgen.py --config mimicgen/train_scripts/train_configs/train_config_cup_diffusion_D1_ema.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_cup_task_D1.json'
+
+# sbatch start_sbatch.sh 'python mimicgen/train_scripts/train_mimicgen.py --config mimicgen/train_scripts/train_configs/train_config_cup_diffusion_D1_no_jpos_ema.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_cup_task_D1.json'

@@ -6,7 +6,8 @@
 # remote_dir="/viscam/projects/kdm/real_world_processed/annotated_segments"
 # local_dir="/home/weiyu/data_drive/kdm/real_world"
 
-remote_dir="/viscam/u/mengdixu/b1k-datagen/mimicgen/datasets"
+### generated data transfer
+remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/datasets"
 local_dir="/home/mengdi/b1k_datagen/mimicgen/datasets/generated_data"
 
 # copy the whole dir without the backslash

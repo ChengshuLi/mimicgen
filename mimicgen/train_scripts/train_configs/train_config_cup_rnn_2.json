@@ -2,7 +2,7 @@
     "algo_name": "bc",
     "experiment": {
         "name": "test_tiago_cup",
-        "validate": false,
+        "validate": true,
         "logging": {
             "terminal_output_to_txt": true,
             "log_tb": false,
@@ -12,7 +12,7 @@
         "save": {
             "enabled": true,
             "every_n_seconds": null,
-            "every_n_epochs": 100,
+            "every_n_epochs": 10,
             "epochs": [],
             "on_best_validation": false,
             "on_best_rollout_return": false,
@@ -29,7 +29,7 @@
         "rollout": {
             "enabled": false,
             "n": 2,
-            "horizon": 1500,
+            "horizon": 20,
             "rate": 100,
             "warmstart": 0,
             "terminate_on_success": true
@@ -37,7 +37,7 @@
         "env_meta_update_dict": {}
     },
     "train": {
-        "data": "./datasets/generated_data/robomimic_dataset.hdf5",
+        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_fps_2048.hdf5",
         "output_dir": "./logs",
         "num_data_workers": 2,
         "hdf5_cache_mode": "low_dim",
@@ -58,39 +58,14 @@
         ],
         "action_config": {
             "actions": {
-                "normalization": null,
-                "rot_conversion": null
-            },
-            "action_dict/abs_pos": {
-                "normalization": "min_max"
-            },
-            "action_dict/abs_rot_axis_angle": {
                 "normalization": "min_max",
-                "format": "rot_axis_angle"
-            },
-            "action_dict/abs_rot_6d": {
-                "normalization": null,
-                "format": "rot_6d"
-            },
-            "action_dict/rel_pos": {
-                "normalization": null
-            },
-            "action_dict/rel_rot_axis_angle": {
-                "normalization": null,
-                "format": "rot_axis_angle"
-            },
-            "action_dict/rel_rot_6d": {
-                "normalization": null,
-                "format": "rot_6d"
-            },
-            "action_dict/gripper": {
-                "normalization": null
+                "rot_conversion": null
             }
         },
         "goal_mode": null,
         "cuda": true,
         "batch_size": 100,
-        "num_epochs": 3000,
+        "num_epochs": 500,
         "seed": 1,
         "data_format": "robomimic"
     },
@@ -204,8 +179,7 @@
                     "eef_left_quat", 
                     "eef_right_pos", 
                     "eef_right_quat", 
-                    "object::dixie_cup", 
-                    "object::coffee_cup"
+                    "combined::point_cloud"
                 ],
                 "rgb": [],
                 "depth": [],

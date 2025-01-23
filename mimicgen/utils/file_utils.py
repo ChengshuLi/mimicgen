@@ -387,6 +387,7 @@ def write_demo_to_hdf5(
     src_demo_labels=None,
     mp_end_steps=None,
     subtask_lengths=None,
+    external_sensor_info=None,
 ):
     """
     Helper function to write demonstration to an hdf5 file (robomimic format) in a folder. It will be 
@@ -453,6 +454,11 @@ def write_demo_to_hdf5(
         ep_data_grp.create_dataset("mp_end_steps", data=np.array(mp_end_steps))
     if subtask_lengths is not None:
         ep_data_grp.create_dataset("subtask_lengths", data=np.array(subtask_lengths))
+    
+    # todo: has bug in it
+    # if external_sensor_info is not None:
+    #     for k in external_sensor_info:
+    #         ep_data_grp.create_dataset("external_sensor_info/{}".format(k), data=np.array(external_sensor_info[k]))
 
     # episode metadata
     if ("model" in initial_state) and (initial_state["model"] is not None):
@@ -478,6 +484,8 @@ def merge_all_hdf5(
     Returns the number of hdf5s that were merged.
     """
     source_hdf5s = glob(os.path.join(folder, "*.hdf5"))
+
+    print(source_hdf5s)
 
     # get all timestamps and sort files from lowest to highest
     timestamps = []

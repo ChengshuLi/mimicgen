@@ -6,6 +6,7 @@
 #SBATCH --account=viscam
 
 # only use the following on partition with GPUs
+# h100, a100
 #SBATCH --gres=gpu:3090:1
 # exclude low mem gpu
 ##SBATCH --exclude=viscam1,viscam7
@@ -36,12 +37,12 @@ conda activate mimicgen
 # export WANDB_API_KEY=032b02330c1a745ffd2eae4ae84f36d81590dcac
 # wandb login
 
-export PATH="/svl/u/weiyul/Research/kdm/Jacinle/bin:$PATH"
-export PYTHONPATH="/svl/u/weiyul/Research/kdm/knowledge-driven-manipulation/src:/svl/u/weiyul/Research/kdm/calvin/calvin_models:/svl/u/weiyul/Research/kdm/calvin/calvin_env:/svl/u/weiyul/Research/kdm/Jacinle:/svl/u/weiyul/Research/kdm/Concepts:$PYTHONPATH"
+# export PATH="/svl/u/weiyul/Research/kdm/Jacinle/bin:$PATH"
+# export PYTHONPATH="/svl/u/weiyul/Research/kdm/knowledge-driven-manipulation/src:/svl/u/weiyul/Research/kdm/calvin/calvin_models:/svl/u/weiyul/Research/kdm/calvin/calvin_env:/svl/u/weiyul/Research/kdm/Jacinle:/svl/u/weiyul/Research/kdm/Concepts:$PYTHONPATH"
 
-cd /svl/u/mengdixu/b
+cd /svl/u/mengdixu/b1k-datagen/mimicgen
+
 $1
-$2
 
 # done
 echo "Done"

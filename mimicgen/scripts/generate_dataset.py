@@ -338,6 +338,7 @@ def generate_dataset(
     og.sim.load_state(state)
     for _ in range(10): og.sim.step()
     
+    failed_generation_num = 0
     while True:
         # generate trajectory
         try:
@@ -366,6 +367,12 @@ def generate_dataset(
             print("")
             num_problematic += 1
             continue
+        
+        if generated_traj is None:
+            failed_generation_num += 1
+            print('Failed to generate trajectory')
+            print('total number of failed generation', failed_generation_num)
+            continue
 
         # remember selection of source demos for each subtask
         selected_src_demo_inds_all.append(generated_traj["src_demo_inds"])
@@ -390,6 +397,7 @@ def generate_dataset(
                 src_demo_labels=generated_traj["src_demo_labels"],
                 mp_end_steps=generated_traj["mp_end_steps"],
                 subtask_lengths=generated_traj["subtask_lengths"],
+                # external_sensor_info=generated_traj["external_sensor_info"],
             )
             selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
@@ -412,6 +420,7 @@ def generate_dataset(
                     src_demo_labels=generated_traj["src_demo_labels"],
                     mp_end_steps=generated_traj["mp_end_steps"],
                     subtask_lengths=generated_traj["subtask_lengths"],
+                    # external_sensor_info=generated_traj["external_sensor_info"],
                 )
 
         num_attempts += 1
@@ -420,6 +429,7 @@ def generate_dataset(
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
+        print('have {} failed_generation_num not counted in total attempts'.format(failed_generation_num))
         print("*" * 50)
 
         # regularly log progress to disk every so often

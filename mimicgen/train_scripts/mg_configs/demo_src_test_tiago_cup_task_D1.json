@@ -2,7 +2,7 @@
     "name": "test_tiago_cup",
     "type": "omnigibson_bimanual",
     "experiment": {
-        "name": "demo_src_test_tiago_cup_task_D0",
+        "name": "demo_src_test_tiago_cup_task_D1",
         "source": {
             "dataset_path": "./datasets/source_og/test_tiago_cup.hdf5",
             "filter_key": null,
@@ -19,7 +19,7 @@
             "interpolate_from_last_target_pose": true
         },
         "task": {
-            "name": "test_tiago_cup_D0",
+            "name": "test_tiago_cup_D1",
             "robot": null,
             "gripper": null,
             "interface": null,
@@ -163,7 +163,7 @@
         ],
         "hp_values": [
             "test_tiago_cup",
-            "D0"
+            "D1"
         ]
     }
 }
