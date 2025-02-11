@@ -33,6 +33,8 @@ from robomimic.envs.env_base import EnvBase
 import mimicgen
 import mimicgen.utils.file_utils as MG_FileUtils
 from mimicgen.env_interfaces.base import make_interface
+from omnigibson.envs import DataPlaybackWrapper
+from omnigibson.macros import gm
 
 
 def extract_datagen_info_from_trajectory(
@@ -221,6 +223,133 @@ def prepare_src_dataset(
         import omnigibson as og
         og.shutdown()
 
+
+def prepare_src_dataset_new(
+    dataset_path,
+    env_interface_name,
+    env_interface_type,
+    filter_key=None,
+    n=None,
+    output_path=None,
+):
+    """
+    Adds DatagenInfo object instance for each timestep in each source demonstration trajectory
+    and stores it under the "datagen_info" key for each episode. Also store the @env_interface_name
+    and @env_interface_type used in the attribute of each key. This information is used during
+    MimicGen data generation.
+
+    Args:
+        dataset_path (str): path to input hdf5 dataset, which will be modified in-place unless
+            @output_path is provided
+
+        env_interface_name (str): name of environment interface class to use for this source dataset
+
+        env_interface_type (str): type of environment interface to use for this source dataset
+
+        filter_key (str or None): name of filter key
+
+        n (int or None): if provided, stop after n trajectories are processed
+
+        output_path (str or None): if provided, write a new hdf5 here instead of modifying the
+            original dataset in-place
+    """
+    # maybe write to new file instead of modifying existing file in-place
+    if output_path is not None:
+        shutil.copy(dataset_path, output_path)
+        dataset_path = output_path
+
+    if env_interface_type == "omnigibson" or env_interface_type == "omnigibson_bimanual":
+        FileUtils.preprocess_omnigibson_dataset(dataset_path)
+
+    # create environment that was to collect source demonstrations
+    env_meta = FileUtils.get_env_metadata_from_dataset(dataset_path=dataset_path)
+
+    print("==== Using environment with the following metadata ====")
+    print(env_meta)
+
+    gm.ENABLE_TRANSITION_RULES = False
+    env = DataPlaybackWrapper.create_from_hdf5(
+        input_path=dataset_path,
+        output_path=None,
+        robot_obs_modalities=(),
+        robot_sensor_config=None,
+        external_sensors_config=None,
+        n_render_iterations=1,
+        only_successes=False,
+        replay_state=True,
+    )
+
+    # create environment interface for us to grab relevant information from simulation at each timestep
+    env_interface = make_interface(
+        name=env_interface_name,
+        interface_type=env_interface_type,
+        # NOTE: env_interface takes underlying simulation environment, not robomimic wrapper
+        env=env,
+    )
+    print("Created environment interface: {}".format(env_interface))
+
+    # get list of source demonstration keys from source hdf5
+    demos = MG_FileUtils.get_all_demos_from_dataset(
+        dataset_path=dataset_path,
+        filter_key=filter_key,
+        start=None,
+        n=n,
+    )
+
+    print("File that will be modified with datagen info: {}".format(dataset_path))
+
+    all_datagen_info = env.playback_dataset(record=False, callback=env_interface.get_datagen_info)
+
+    env.input_hdf5.close()
+
+    # open file to modify it
+    f = h5py.File(dataset_path, "a")
+
+    for ind in tqdm(range(len(demos))):
+        ep = demos[ind]
+        ep_grp = f["data/{}".format(ep)]
+
+        datagen_info = all_datagen_info[ind]
+        datagen_info = [info.to_dict() for info in datagen_info]
+
+        # convert list of dict to dict of list for datagen info dictionaries (for convenient writes to hdf5 dataset)
+        datagen_info = TensorUtils.list_of_flat_dict_to_dict_of_list(datagen_info)
+
+        for k in datagen_info:
+            if k in ["object_poses", "subtask_term_signals"]:
+                # convert list of dict to dict of list again
+                datagen_info[k] = TensorUtils.list_of_flat_dict_to_dict_of_list(datagen_info[k])
+                # list to numpy array
+                for k2 in datagen_info[k]:
+                    datagen_info[k][k2] = np.array(datagen_info[k][k2])
+            else:
+                # list to numpy array
+                datagen_info[k] = np.array(datagen_info[k])
+
+        # delete old dategen info if it already exists
+        if "datagen_info" in ep_grp:
+            del ep_grp["datagen_info"]
+
+        for k in datagen_info:
+            if k in ["object_poses", "subtask_term_signals"]:
+                # handle dict
+                for k2 in datagen_info[k]:
+                    ep_grp.create_dataset("datagen_info/{}/{}".format(k, k2), data=np.array(datagen_info[k][k2]))
+            else:
+                ep_grp.create_dataset("datagen_info/{}".format(k), data=np.array(datagen_info[k]))
+
+        # remember the env interface used too
+        ep_grp["datagen_info"].attrs["env_interface_name"] = env_interface_name
+        ep_grp["datagen_info"].attrs["env_interface_type"] = env_interface_type
+
+    print("Modified {} trajectories to include datagen info.".format(len(demos)))
+    f.close()
+
+    # Properly shutdown omnigibson if needed
+    if env_interface_type == "omnigibson" or env_interface_type == "omnigibson_bimanual":
+        import omnigibson as og
+        og.shutdown()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -261,7 +390,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    prepare_src_dataset(
+    prepare_src_dataset_new(
         dataset_path=args.dataset,
         env_interface_name=args.env_interface,
         env_interface_type=args.env_interface_type,

@@ -15,7 +15,7 @@ import pdb
 import copy
 
 import omnigibson.utils.transform_utils as T
-from omnigibson.action_primitives.curobo import CuroboEmbodimentSelection
+from omnigibson.action_primitives.curobo import CuRoboEmbodimentSelection
 import torch as th
 
 
@@ -363,6 +363,8 @@ class WaypointTrajectory(object):
         bimanual=False,
         cur_subtask_end_step_MP=None,
         attached_obj=None,
+        phase_type=None,
+        object_ref=None,
     ):
         """
         Main function to execute the trajectory. Will use env_interface.target_pose_to_action to
@@ -387,7 +389,69 @@ class WaypointTrajectory(object):
                 actions (list): action executed at each timestep
                 success (bool): whether the trajectory successfully solved the task or not
         """
+
+        print("execute")
+        breakpoint()
+
         robot = env.env.robots[0]
+
+        if phase_type == "navigation":
+            obj = env.env.scene.object_registry("name", object_ref["arm_right"])
+            seq = self.waypoint_sequences[0]
+            left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+            right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+            left_waypoint = left_mp_waypoints[-1]
+            left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
+            right_waypoint = right_mp_waypoints[-1]
+            right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
+
+            eef_pose = {
+                "left": (left_waypoint_pos, left_waypoint_ori),
+                "right": (right_waypoint_pos, right_waypoint_ori)
+            }
+            env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+            env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+            env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
+            env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+            th.manual_seed(3)
+            action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose=eef_pose)
+            local_env_step = 0
+            states = []
+            actions = []
+            observations = []
+            datagen_infos = []
+            success = {"task": False}
+            # success = {k: False for k in env.is_success()} # success metrics
+            for mp_action in action_generator:
+                mp_action = mp_action.cpu().numpy()
+                state = env.get_state()["states"]
+                obs = env.get_observation()
+                # obs = env.get_obs_IL()
+                datagen_info = env_interface.get_datagen_info(action=mp_action)
+                env.step(mp_action)
+                local_env_step += 1
+                states.append(state)
+                actions.append(mp_action)
+                observations.append(obs)
+                datagen_infos.append(datagen_info)
+                # cur_success_metrics = env.is_success()
+                # for k in success:
+                #     success[k] = success[k] or cur_success_metrics[k]
+
+            MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
+            results = dict(
+                states=states,
+                observations=observations,
+                datagen_infos=datagen_infos,
+                actions=np.array(actions),
+                success=bool(success["task"]),
+                mp_end_steps=MP_end_step_local_list,
+                subtask_lengths=local_env_step,
+            )
+            print('mp_end_steps', results['mp_end_steps'])
+            print('subtask_lengths', results['subtask_lengths'])
+            return results
+
         # write_video = (video_writer is not None)
         # video_count = 0
 
@@ -396,7 +460,8 @@ class WaypointTrajectory(object):
         actions = []
         observations = []
         datagen_infos = []
-        success = {k: False for k in env.is_success()} # success metrics
+        success = {"task": False}
+        # success = {k: False for k in env.is_success()} # success metrics
 
         assert len(self.waypoint_sequences) == 1
         seq = self.waypoint_sequences[0]
@@ -409,6 +474,11 @@ class WaypointTrajectory(object):
         right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
         right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
 
+        print("left_mp_waypoints", len(left_mp_waypoints))
+        print("left_replay_waypoints", len(left_replay_waypoints))
+        print("right_mp_waypoints", len(right_mp_waypoints))
+        print("right_replay_waypoints", len(right_replay_waypoints))
+
         # Get the last waypoint for padding later
         last_waypoint = seq[-1]
 
@@ -416,7 +486,7 @@ class WaypointTrajectory(object):
         # breakpoint()
         # TODO: potentially make waypoints more dense
 
-        # If there are motion planner waypoints
+
         # 1. make sure the gripper actions are the same
         # 2. get the last waypoint's pose and orientation as the MP target
         # Otherwise, use the current eef pose as the MP target
@@ -450,7 +520,10 @@ class WaypointTrajectory(object):
                 robot.eef_link_names["left"]: left_waypoint_ori,
                 robot.eef_link_names["right"]: right_waypoint_ori,
             }
-            emb_sel = CuroboEmbodimentSelection.ARM
+            # If both hands have motion planner waypoints, we use the arm + torso embodiment
+            # If only one of the hands has motion planner waypoints, we use the arm embodiment only because
+            # when we replay the waypoints for the other hand, we assume the torso is fixed.
+            emb_sel = CuRoboEmbodimentSelection.ARM if len(left_mp_waypoints) > 0 and len(right_mp_waypoints) > 0 else CuRoboEmbodimentSelection.ARM_NO_TORSO
 
             # Attached the object to the robot for planning
             if attached_obj is None:
@@ -459,8 +532,9 @@ class WaypointTrajectory(object):
                 attached_obj_new = {}
                 attached_obj_scale = {}
                 for arm, obj_name in attached_obj.items():
-                    attached_obj_new[robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
-                    attached_obj_scale[robot.eef_link_names[arm]] = 0.9
+                    if obj_name is not None:
+                        attached_obj_new[robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
+                        attached_obj_scale[robot.eef_link_names[arm]] = 0.9
                 attached_obj = attached_obj_new
 
             # Generate collision-free trajectories to the sampled eef poses (including self-collisions)
@@ -482,33 +556,31 @@ class WaypointTrajectory(object):
             # TODO: These lines are for debugging purposes.
             # successes, traj_paths = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=False, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
             # full_result = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=True, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
-            # env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-            # env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            # env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
-            # env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+            env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+            env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+            env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
+            env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+
             success_status, traj_path = successes[0], traj_paths[0]
             # print("success status", success_status)
             # breakpoint()
             # TODO: change the logic, if the motion planner fails, then we reply the trajectory
             if not success_status:
                 print('motion planning failed, breakpoint in waypoint.py')
+                breakpoint()
                 results = None
                 return results
             assert success_status, "motion planning failed"
 
             # import pdb; pdb.set_trace()
             # Convert planned joint trajectory to actions
-            q_traj = env.cmg.path_to_joint_trajectory(traj_path, emb_sel).cpu()
+            # TODO: need to call q_to_action after every env.step if the base is moving; we cannot pre-compute all actions
+            q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
+            q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
+            q_traj = q_traj.cpu()
             mp_actions = []
             for j_pos in q_traj:
-                action = np.zeros(robot.action_dim)
-                for name, controller in robot.controllers.items():
-                    if "gripper" not in name:
-                        command = j_pos[controller.dof_idx]
-                        partial_action = controller._reverse_preprocess_command(command)
-                        action_idx = robot.controller_action_idx[name]
-                        action[action_idx] = partial_action
-
+                action = robot.q_to_action(j_pos).cpu().numpy()
                 # Add gripper actions from the original waypoints (we already checked that they are the same across MP trajectories)
                 if left_gripper_action is not None:
                     action[env_interface.gripper_action_dim[0]] = left_gripper_action[0]
@@ -516,8 +588,9 @@ class WaypointTrajectory(object):
                     action[env_interface.gripper_action_dim[1]] = right_gripper_action[1]
                 mp_actions.append(action)
 
-            # import pdb; pdb.set_trace()
-            # TODO: the logic here is a bit hard to understand, will need to ask Eric and revisit later
+            left_eef_poses = [(left_waypoint_pos, left_waypoint_ori)] * len(mp_actions)
+            right_eef_poses = [(right_waypoint_pos, right_waypoint_ori)] * len(mp_actions)
+
             # If the left hand has no motion planner waypoints, we start replaying the left hand waypoints while the right hand are following the MP trajectory.
             if len(left_mp_waypoints) == 0:
                 # We need to pad the left hand waypoints to match the length of the MP trajectory
@@ -525,10 +598,12 @@ class WaypointTrajectory(object):
                     for _ in range(len(mp_actions) - len(left_replay_waypoints)):
                         left_replay_waypoints.append(last_waypoint)
 
+                left_eef_poses = []
                 # We convert the target pose of the left hand to replay_action
                 # Then we *overwrite* the motion planner action with the replay action for the left arm and gripper
                 for i, action in enumerate(mp_actions):
                     replay_action = env_interface.target_pose_to_action(target_pose=left_replay_waypoints[i].pose)
+                    left_eef_poses.append((left_replay_waypoints[i].pose[0:3, 3], T.mat2quat(th.tensor(left_replay_waypoints[i].pose[0:3, 0:3]))))
                     action_idx = robot.controller_action_idx["arm_left"]
                     action[action_idx] = replay_action[action_idx]
                     action[env_interface.gripper_action_dim[0]] = left_replay_waypoints[i].gripper_action[0]
@@ -541,38 +616,42 @@ class WaypointTrajectory(object):
                 if len(right_replay_waypoints) < len(mp_actions):
                     for _ in range(len(mp_actions) - len(right_replay_waypoints)):
                         right_replay_waypoints.append(last_waypoint)
+                right_eef_poses = []
                 for i, action in enumerate(mp_actions):
                     replay_action = env_interface.target_pose_to_action(target_pose=right_replay_waypoints[i].pose)
+                    right_eef_poses.append((right_replay_waypoints[i].pose[4:7, 3], T.mat2quat(th.tensor(right_replay_waypoints[i].pose[4:7, 0:3]))))
                     action_idx = robot.controller_action_idx["arm_right"]
                     action[action_idx] = replay_action[action_idx]
                     action[env_interface.gripper_action_dim[1]] = right_replay_waypoints[i].gripper_action[1]
 
                 right_replay_waypoints = right_replay_waypoints[len(mp_actions):]
 
+            assert len(mp_actions) == len(left_eef_poses) == len(right_eef_poses)
+            print('length of MP actions:', len(mp_actions))
+            breakpoint()
             # import pdb; pdb.set_trace()
             # For each motion planner action, we repeat it 3 times for the controllers to converge
-            num_repeat = 3
-            for mp_action in mp_actions:
+            num_repeat = 1
+            for i, mp_action in enumerate(mp_actions):
                 for _ in range(num_repeat):
                     state = env.get_state()["states"]
-                    # obs = env.get_observation()
-                    obs = env.get_obs_IL()
+                    obs = env.get_observation()
+                    # obs = env.get_obs_IL()
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action)
+                    env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                    env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                    env.eef_goal_marker_left.set_position_orientation(*left_eef_poses[i])
+                    env.eef_goal_marker_right.set_position_orientation(*right_eef_poses[i])
                     local_env_step += 1
                     states.append(state)
                     actions.append(mp_action)
                     observations.append(obs)
                     datagen_infos.append(datagen_info)
-                    cur_success_metrics = env.is_success()
-                    for k in success:
-                        success[k] = success[k] or cur_success_metrics[k]
-            
-            print('length of MP actions:', len(mp_actions))
+                    # cur_success_metrics = env.is_success()
+                    # for k in success:
+                    #     success[k] = success[k] or cur_success_metrics[k]
 
-            # print("MP actions")
-            # breakpoint()
-        
         # import pdb; pdb.set_trace()
         
         MP_end_step_local = copy.deepcopy(local_env_step)
@@ -585,9 +664,8 @@ class WaypointTrajectory(object):
             right_MP_end_step_local = 0
         else: 
             right_MP_end_step_local = MP_end_step_local
-        MP_end_step_local_dict = {"left": left_MP_end_step_local, "right": right_MP_end_step_local}
-        MP_end_step_local_lsit = [left_MP_end_step_local, right_MP_end_step_local]
-        
+
+        MP_end_step_local_list = [left_MP_end_step_local, right_MP_end_step_local]
 
         # Now we move on to the replay phase
         # We need to pad the waypoints for the left and right hands to match the length of the longest trajectory
@@ -598,9 +676,9 @@ class WaypointTrajectory(object):
             for _ in range(len(left_replay_waypoints) - len(right_replay_waypoints)):
                 right_replay_waypoints.append(last_waypoint)
 
-        # print("before replay actions")
-        # breakpoint()
-
+        assert len(left_replay_waypoints) == len(right_replay_waypoints)
+        print('length of replay actions:', len(left_replay_waypoints))
+        breakpoint()
         # For each pair of waypoints, we extract the pose for each hand and then convert to action
         # We also overwrite the gripper actions with the ones from the waypoints
         for left_waypoint, right_waypoint in zip(left_replay_waypoints, right_replay_waypoints):
@@ -623,19 +701,25 @@ class WaypointTrajectory(object):
             #     env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
 
             state = env.get_state()["states"]
-            # obs = env.get_observation()
-            obs = env.get_obs_IL()
+            obs = env.get_observation()
+            # obs = env.get_obs_IL()
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action)
+            left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
+            right_eef_pose = (pose[4:7, 3], T.mat2quat(th.tensor(pose[4:7, 0:3])))
+            env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+            env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+            env.eef_goal_marker_left.set_position_orientation(*left_eef_pose)
+            env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
             # import pdb; pdb.set_trace()
             local_env_step += 1
             states.append(state)
             actions.append(replay_action)
             observations.append(obs)
             datagen_infos.append(datagen_info)
-            cur_success_metrics = env.is_success()
-            for k in success:
-                success[k] = success[k] or cur_success_metrics[k]
+            # cur_success_metrics = env.is_success()
+            # for k in success:
+            #     success[k] = success[k] or cur_success_metrics[k]
 
         # import pdb; pdb.set_trace()
 
@@ -735,7 +819,7 @@ class WaypointTrajectory(object):
             datagen_infos=datagen_infos,
             actions=np.array(actions),
             success=bool(success["task"]),
-            mp_end_steps=MP_end_step_local_lsit,
+            mp_end_steps=MP_end_step_local_list,
             subtask_lengths=local_env_step,
         )
         print('mp_end_steps', results['mp_end_steps'])

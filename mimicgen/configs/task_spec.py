@@ -25,7 +25,6 @@ class MG_TaskSpec:
         self, 
         object_ref,
         subtask_term_signal,
-        subtask_teradd_bimanual_subtaskm_offset_range=None,
         selection_strategy="random",
         selection_strategy_kwargs=None,
         action_noise=0.,
@@ -208,11 +207,12 @@ class MG_TaskSpec:
                 for subtask_name in json_dict_arm:
                     if json_dict_arm[subtask_name]["subtask_term_offset_range"] is not None:
                         json_dict_arm[subtask_name]["subtask_term_offset_range"] = tuple(json_dict_arm[subtask_name]["subtask_term_offset_range"])  
-                    task_spec.add_bimanual_subtask(**json_dict_arm[subtask_name])
+                    task_spec.add_bimanual_subtask(phase_type=phase_json_dict["type"], **json_dict_arm[subtask_name])
 
         return task_spec
     
-    def add_bimanual_subtask(self, 
+    def add_bimanual_subtask(self,
+        phase_type,
         object_ref,
         subtask_term_signal,
         subtask_term_step=None,
@@ -284,6 +284,7 @@ class MG_TaskSpec:
         assert_selection_strategy_exists(selection_strategy)
         # TODO: now it is only compatible when phase exist; if phase not exist, change to self.spec[-1].append()
         self.spec[-1][-1].append(dict(
+            phase_type=phase_type,
             object_ref=object_ref,
             subtask_term_signal=subtask_term_signal,
             subtask_term_step=subtask_term_step,

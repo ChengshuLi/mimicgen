@@ -3,12 +3,12 @@
 ###
 
 cp OmniGibson/omnigibson/examples/data_collection/test_tiago_cup.hdf5 mimicgen/datasets/source_og/test_tiago_cup.hdf5
-
 cd mimicgen
 
 # TODO: need to build an environment interface in/b1k-mimicgen/mimicgen/mimicgen/env_interfaces/omnigibson.py 
 
 python mimicgen/scripts/prepare_src_dataset.py --dataset datasets/source_og/test_tiago_cup.hdf5 --env_interface MG_TestTiagoCup --env_interface_type omnigibson_bimanual
+python mimicgen/scripts/prepare_src_dataset.py --dataset datasets/source_og/test_r1_cup.hdf5 --env_interface MG_TestR1Cup --env_interface_type omnigibson_bimanual
 
 python mimicgen/scripts/get_source_info.py --dataset datasets/source_og/test_tiago_cup.hdf5
 # example output:
@@ -48,6 +48,7 @@ python mimicgen/scripts/visualize_subtasks.py --dataset datasets/source_og/test_
 # sanity check with D0 to see whether the drift problem exist
 # TODO: D0 quickly raise cuda error, need to check why 
 python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_cup_task_D0.json --auto-remove-exp --num_demos 4 --bimanual
+python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_r1_cup_task_D0.json --auto-remove-exp --num_demos 10 --bimanual
 
 
 # even with really small initial posiiton randomization range, the 

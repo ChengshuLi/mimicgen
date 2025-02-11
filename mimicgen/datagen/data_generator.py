@@ -267,7 +267,7 @@ class DataGenerator(object):
             src_obj_pose=src_left_arm_object_pose) # shape (1, 4, 4)
         transformed_eef_poses_right_arm_object = PoseUtils.transform_source_data_segment_using_object_pose(
             obj_pose=cur_right_arm_object_pose, 
-            src_eef_poses=src_right_arm_object_pose,
+            src_eef_poses=src_right_arm_start_pose,
             src_obj_pose=src_right_arm_object_pose) # shape (1, 4, 4)
 
         cur_left_arm_pose = env_interface.get_datagen_info().eef_pose[None][:,:4,:] # shape (1, 4, 4)
@@ -305,9 +305,6 @@ class DataGenerator(object):
     def parse_MP_end_step_local(self):
         """
         parse the MP_end_step from the configuration file and get the local information
-        if 0, MP will end at the beginning of the current subtask
-        if -1, MP will end at the end of the current subtask
-        other numbers are the steps required from the beginning of the current subtask
         """
         # example output
         # [
@@ -320,24 +317,21 @@ class DataGenerator(object):
         #       [-1]
         #   ]
         # ]
-
         end_step_of_MP = []
-        phase_start_ind = 0
         for phase_ind in range(self.num_phases):
-            if phase_ind > 0:
-                phase_start_ind = self.task_spec[phase_ind-1][0][-1]["subtask_term_step"]
             end_step_of_MP.append([])
             for arm_ind in range(2): # left and right arms
                 num_subtasks_cur_phase = len(self.task_spec[phase_ind][arm_ind])
                 end_step_of_MP[-1].append([])
                 for i in range(num_subtasks_cur_phase):
-                    end_step = self.task_spec[phase_ind][arm_ind][i]['MP_end_step']
-                    end_step = -1 if end_step is None else end_step
-                    end_step = -1 if end_step == self.task_spec[phase_ind][arm_ind][i]['subtask_term_step'] else end_step
-                    if i>0 and end_step >=0:
-                        end_step -= self.task_spec[phase_ind][arm_ind][i-1]['subtask_term_step']
-                    if i==0 and end_step >=0 and phase_ind > 0:
-                        end_step -= phase_start_ind
+                    if self.task_spec[phase_ind][arm_ind][i]["MP_end_step"] is not None:
+                        end_step = self.task_spec[phase_ind][arm_ind][i]["MP_end_step"]
+                    elif self.task_spec[phase_ind][arm_ind][i]['subtask_term_step'] is not None:
+                        end_step = self.task_spec[phase_ind][arm_ind][i]['subtask_term_step']
+                    else:
+                        # We only have one demo right now, so we can use the length of the demo as the end step
+                        end_step = self.src_dataset_infos[0].eef_pose.shape[0]
+
                     end_step_of_MP[-1][-1].append(end_step)
         print('end_step_of_MP', end_step_of_MP)
         return end_step_of_MP
@@ -469,7 +463,7 @@ class DataGenerator(object):
         sensor.set_position_orientation(
             position=th.tensor([ 1.0304, -0.0309,  1.0272]),
             orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
-            )
+        )
 
         # sensor config option 3: camera zoomed in
         # sensor.set_position_orientation(
@@ -477,11 +471,11 @@ class DataGenerator(object):
         #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
             # )
 
-        # sensor.image_height = 360
-        # sensor.image_width = 640
-
         sensor.image_height = 180
         sensor.image_width = 320
+
+        # sensor.image_height = 1080
+        # sensor.image_width = 1920
                 
         sensor._add_modality_to_backend(modality='depth_linear')
         sensor._modalities = {"depth_linear", "rgb"}
@@ -546,16 +540,13 @@ class DataGenerator(object):
         generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
 
         # for left arms first
-        phase_start_ind = 0
         for phase_ind in range(self.num_phases):
-            if phase_ind > 0:
-                phase_start_ind = self.task_spec[phase_ind-1][0][-1]["subtask_term_step"]
             cur_phase_task_spec = self.task_spec[phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
             # restructure subtasks indexes and reference objects
             all_subtask_inds = all_subtask_inds_structure[phase_ind]
-            subtask_ind_vals = np.sort(np.unique(all_subtask_inds))
+            subtask_ind_vals = np.sort(np.unique(np.concatenate((np.unique(all_subtask_inds[0]), np.unique(all_subtask_inds[1])))))
             num_subtasks = len(subtask_ind_vals) - 1
             
             # a distance based heuristic to change the role of the two arms
@@ -586,6 +577,7 @@ class DataGenerator(object):
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
                 attached_obj_dict = {}
+                object_ref = {}
                 MP_end_steps = []
 
                 for arm_i, arm_name in enumerate(['arm_left', 'arm_right']):
@@ -606,8 +598,8 @@ class DataGenerator(object):
 
                     cur_datagen_info = env_interface.get_datagen_info()
                     subtask_object_name = cur_phase_task_spec[arm_i][subtask_ind]["object_ref"]
+                    object_ref[arm_name] = subtask_object_name
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
-                    print('subtask_object_name', subtask_object_name)
                     key_name = arm_name.replace('arm_', '')
                     attached_obj_dict[key_name] = cur_phase_task_spec[arm_i][subtask_ind]["attached_obj"]
                     MP_end_steps.append(end_step_of_MP_local[phase_ind][arm_i][subtask_ind])
@@ -737,44 +729,17 @@ class DataGenerator(object):
                 # reformat the local info with the current subtask start and end steps
                 # TODO: the logic here can be problematic when other demonstration annotations, need to double check with other data demonstrations
                 for i in range(2):
-                    end_step = MP_end_steps[i]
-                    if end_step == -1: 
-                        # MP will last till the last step of the subtask
-                        end_step = selected_src_subtask_inds[-1] - selected_src_subtask_inds[0]
-                        MP_end_steps[i] = end_step
-                    elif end_step <= (selected_src_subtask_inds[0]-phase_start_ind):
-                        # MP will end at the beginning of the subtask
-                        MP_end_steps[i] = 0
-                cur_subtask_end_step_MP = MP_end_steps
+                    # Clip between selected_src_subtask_inds[0] and selected_src_subtask_inds[1]
+                    MP_end_steps[i] = min(max(MP_end_steps[i], selected_src_subtask_inds[0]), selected_src_subtask_inds[1])
+                    MP_end_steps[i] -= selected_src_subtask_inds[0]
 
-                MP_end_steps_new = []
                 if change_role:
-                    # need to change the order of the MP_end_steps
-                    MP_end_steps_new.append(MP_end_steps[1])
-                    MP_end_steps_new.append(MP_end_steps[0])
-                    cur_subtask_end_step_MP = MP_end_steps_new
+                    MP_end_steps = MP_end_steps[::-1]
                     # TODO: need to change the attached_obj_dict as well
 
-                print('MP_end_steps after', MP_end_steps)
-                print('cur_subtask_end_step_MP', cur_subtask_end_step_MP)
+                print('MP_end_steps', MP_end_steps)
 
-                attached_obj = [
-                    [None, 
-                     {"left": "paper_cup", "right": "coffee_cup"}, 
-                     {"left": "paper_cup", "right": "coffee_cup"}],
-                    [{"left": "paper_cup"}],
-                ]
-                # delete the key if the value is None in the attached_obj_dict
-                attached_obj_dict = {key: attached_obj_dict[key] for key in attached_obj_dict if attached_obj_dict[key] is not None}
-                if attached_obj_dict == {}:
-                    attached_obj_dict = None
-
-                print('attached_obj_dict after', attached_obj_dict)
-                print('attached objects', attached_obj[phase_ind][subtask_ind_reordered])
-                
-                # now still execute each subtask separately
-                # import pdb; pdb.set_trace()
-
+                breakpoint()
                 # Execute the trajectory and collect data.
                 exec_results = traj_to_execute.execute(
                     env=env,
@@ -784,9 +749,11 @@ class DataGenerator(object):
                     video_skip=video_skip,
                     camera_names=camera_names,
                     bimanual=self.bimanual,
-                    cur_subtask_end_step_MP=cur_subtask_end_step_MP,
+                    cur_subtask_end_step_MP=MP_end_steps,
                     # attached_obj=attached_obj[phase_ind][subtask_ind_reordered],
-                    attached_obj = attached_obj_dict,
+                    attached_obj=attached_obj_dict,
+                    phase_type=self.task_spec[phase_ind][0][0]["phase_type"],
+                    object_ref=object_ref,
                 )
                 if exec_results is None:
                     print('failed to execute the trajectory, breakpoint in data_generator.py')
