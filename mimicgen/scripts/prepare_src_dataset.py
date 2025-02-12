@@ -298,7 +298,7 @@ def prepare_src_dataset_new(
 
     print("File that will be modified with datagen info: {}".format(dataset_path))
 
-    all_datagen_info = env.playback_dataset(record=False, callback=env_interface.get_datagen_info)
+    all_datagen_info = env.playback_dataset(record_data=False, callback=env_interface.get_datagen_info)
 
     env.input_hdf5.close()
 
