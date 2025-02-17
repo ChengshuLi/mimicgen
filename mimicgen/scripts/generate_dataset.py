@@ -32,7 +32,6 @@ import traceback
 import random
 import imageio
 import numpy as np
-from copy import deepcopy
 
 import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
@@ -45,6 +44,9 @@ import mimicgen.utils.robomimic_utils as RobomimicUtils
 from mimicgen.configs import config_factory, MG_TaskSpec
 from mimicgen.datagen.data_generator import DataGenerator
 from mimicgen.env_interfaces.base import make_interface
+
+import omnigibson as og
+import omnigibson.lazy as lazy
 
 
 def get_important_stats(
@@ -316,9 +318,24 @@ def generate_dataset(
 
     # TODO: need to make this specialized for different tasks
     # including changing the properties of different objects
-    import omnigibson as og
+
+    # Increase gripper friction
     state = og.sim.dump_state()
     og.sim.stop()
+    target_friction = 2.0
+    gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
+        prim_path=f"{env.env.robots[0].prim_path}/gripper_mat",
+        name="gripper_material",
+        static_friction=target_friction,
+        dynamic_friction=target_friction,
+        restitution=None,
+    )
+    for links in env.env.robots[0].finger_links.values():
+        for link in links:
+            for msh in link.collision_meshes.values():
+                msh.apply_physics_material(gripper_mat)
+    og.sim.play()
+    og.sim.load_state(state)
 
     # notebook = env.env.scene.object_registry("name", "notebook")
     # notebook.links['base_link'].density = 10
@@ -328,15 +345,15 @@ def generate_dataset(
     # giftbox = env.scene.object_registry("name", "gift_box")
     # giftbox.links['base_link'].density = 100
 
-    coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
-    coffee_cup.links['base_link'].density = 30
+    # coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
+    # coffee_cup.links['base_link'].density = 30
 
-    paper_cup = env.env.scene.object_registry("name", "paper_cup")
-    paper_cup.links['base_link'].density = 100
+    # paper_cup = env.env.scene.object_registry("name", "paper_cup")
+    # paper_cup.links['base_link'].density = 100
 
-    og.sim.play()
-    og.sim.load_state(state)
-    for _ in range(10): og.sim.step()
+    # og.sim.play()
+    # og.sim.load_state(state)
+    # for _ in range(10): og.sim.step()
     
     failed_generation_num = 0
     while True:
@@ -554,7 +571,6 @@ def generate_dataset(
     #       and @selected_src_demo_inds_succ
 
     if env_meta["type"] == EnvUtils.EB.EnvType.OG_TYPE:
-        import omnigibson as og
         og.shutdown()
 
     return final_important_stats

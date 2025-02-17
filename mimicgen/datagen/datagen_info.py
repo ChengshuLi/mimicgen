@@ -16,6 +16,7 @@ class DatagenInfo(object):
     """
     def __init__(
         self,
+        base_pose=None,
         eef_pose=None,
         object_poses=None,
         subtask_term_signals=None,
@@ -34,6 +35,10 @@ class DatagenInfo(object):
             gripper_action (np.array or None): gripper actions of shape [..., D] where D
                 is the dimension of the gripper actuation action for the robot arm
         """
+        self.base_pose = None
+        if base_pose is not None:
+            self.base_pose = np.array(base_pose)
+
         self.eef_pose = None
         if eef_pose is not None:
             self.eef_pose = np.array(eef_pose)
@@ -65,6 +70,8 @@ class DatagenInfo(object):
         Convert this instance to a dictionary containing the same information.
         """
         ret = dict()
+        if self.base_pose is not None:
+            ret["base_pose"] = np.array(self.base_pose)
         if self.eef_pose is not None:
             ret["eef_pose"] = np.array(self.eef_pose)
         if self.object_poses is not None:

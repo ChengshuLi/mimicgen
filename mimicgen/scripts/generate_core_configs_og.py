@@ -50,7 +50,8 @@ BASE_CONFIGS = [
 #     os.path.join(BASE_BASE_CONFIG_PATH, "test_cabinet.json"),
 #     os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_giftbox.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_notebook.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_cup.json"),
+    # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_cup.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "test_r1_cup.json"),
 ]
 
 def make_generators(base_configs):
@@ -103,10 +104,21 @@ def make_generators(base_configs):
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None],
         # ),
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_cup.hdf5"),
+        #     dataset_name="test_tiago_cup",
+        #     generation_path="{}/test_tiago_cup".format(OUTPUT_FOLDER),
+        #     tasks=["test_tiago_cup_D0", "test_tiago_cup_D1", "test_tiago_cup_D2"],
+        #     task_names=["D0", "D1", "D2"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
+        # ),
         dict(
-            dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_cup.hdf5"),
-            dataset_name="test_tiago_cup",
-            generation_path="{}/test_tiago_cup".format(OUTPUT_FOLDER),
+            dataset_path=os.path.join(SRC_DATA_DIR, "test_r1_cup.hdf5"),
+            dataset_name="test_r1_cup",
+            generation_path="{}/test_r1_cup".format(OUTPUT_FOLDER),
             tasks=["test_tiago_cup_D0", "test_tiago_cup_D1", "test_tiago_cup_D2"],
             task_names=["D0", "D1", "D2"],
             select_src_per_subtask=False,

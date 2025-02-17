@@ -10,8 +10,8 @@ import numpy as np
 import omnigibson as og
 import omnigibson.utils.transform_utils as T
 from omnigibson.object_states import *
-from omnigibson.utils.control_utils import orientation_error
 from omnigibson.controllers import ControlType
+import cvxpy as cp
 
 from mimicgen.env_interfaces.base import MG_EnvInterface
 from mimicgen.datagen.datagen_info import DatagenInfo
@@ -50,8 +50,6 @@ class OmniGibsonInterface(MG_EnvInterface):
                 arm_controller = controller
                 break
         assert end_idx is not None and arm_controller is not None
-        self.arm_command_start_idx = start_idx
-        self.arm_command_end_idx = end_idx
         self.arm_controller = arm_controller
 
     def get_robot_eef_pose(self):
@@ -62,72 +60,6 @@ class OmniGibsonInterface(MG_EnvInterface):
             pose (np.array): 4x4 eef pose matrix
         """
         return self.get_object_pose(self.robot.eef_links[self.robot.default_arm])
-
-    # Copy from BaseController of OG
-    def _preprocess_command(self, command):
-        """
-        Clips + scales inputted @command according to self.command_input_limits and self.command_output_limits.
-        If self.command_input_limits is None, then no clipping will occur. If either self.command_input_limits
-        or self.command_output_limits is None, then no scaling will occur.
-
-        Args:
-            command (Array[float] or float): Inputted command vector
-
-        Returns:
-            Array[float]: Processed command vector
-        """
-        # Make sure command is a th.tensor
-        command = th.tensor([command]) if type(command) in {int, float} else command
-        # We only clip and / or scale if self.command_input_limits exists
-        if self.arm_controller._command_input_limits is not None:
-            # Clip
-            command = command.clip(*self.arm_controller._command_input_limits)
-            if self.arm_controller._command_output_limits is not None:
-                # If we haven't calculated how to scale the command, do that now (once)
-                if self.arm_controller._command_scale_factor is None:
-                    self.arm_controller._command_scale_factor = abs(
-                        self.arm_controller._command_output_limits[1] - self.arm_controller._command_output_limits[0]
-                    ) / abs(self.arm_controller._command_input_limits[1] - self.arm_controller._command_input_limits[0])
-                    self.arm_controller._command_output_transform = (
-                        self.arm_controller._command_output_limits[1] + self.arm_controller._command_output_limits[0]
-                    ) / 2.0
-                    self.arm_controller._command_input_transform = (
-                        self.arm_controller._command_input_limits[1] + self.arm_controller._command_input_limits[0]
-                    ) / 2.0
-                # Scale command
-                command = (
-                    command - self.arm_controller._command_input_transform
-                ) * self.arm_controller._command_scale_factor + self.arm_controller._command_output_transform
-
-        # Return processed command
-        return command
-
-    def _undo_preprocess_command(self, command):
-        """
-        The reverse of @preprocess_command. Takes a command that has been scaled and convert it back to the original command
-        """
-        # Make sure command is a th.tensor
-        command = th.tensor([command]) if type(command) in {int, float} else command
-        # We only clip and / or scale if self.command_input_limits exists
-        if self.arm_controller._command_input_limits is not None:
-            if self.arm_controller._command_output_limits is not None:
-                # If we haven't calculated how to scale the command, do that now (once)
-                if self.arm_controller._command_scale_factor is None:
-                    self.arm_controller._command_scale_factor = abs(
-                        self.arm_controller._command_output_limits[1] - self.arm_controller._command_output_limits[0]
-                    ) / abs(self.arm_controller._command_input_limits[1] - self.arm_controller._command_input_limits[0])
-                    self.arm_controller._command_output_transform = (
-                        self.arm_controller._command_output_limits[1] + self.arm_controller._command_output_limits[0]
-                    ) / 2.0
-                    self.arm_controller._command_input_transform = (
-                        self.arm_controller._command_input_limits[1] + self.arm_controller._command_input_limits[0]
-                    ) / 2.0
-
-                # Unscale command
-                command = (command - self.arm_controller._command_output_transform) / self.arm_controller._command_scale_factor + self.arm_controller._command_input_transform
-
-            # No need to unclip
-        return command
 
     def target_pose_to_action(self, target_pose, relative=True):
         """
@@ -158,17 +90,16 @@ class OmniGibsonInterface(MG_EnvInterface):
         # Find the relative pose between the current eef pose and the target eef pose in the robot frame (delta pose)
         dpos = target_pos - pos_relative
 
-        dori = T.mat2quat(T.quat2mat(target_quat) @ T.quat2mat(quat_relative).T)
-        dori = T.quat2axisangle(dori)
+        dori = T.orientation_error(T.quat2mat(target_quat), T.quat2mat(quat_relative))
 
         # Assemble the arm command and undo the preprocessing
         arm_command = th.cat([dpos, dori])
-        arm_command = self._undo_preprocess_command(arm_command)
+        arm_action = self.robot.controllers[f"arm_{self.robot.default_arm}"]._reverse_preprocess_command(arm_command)
 
         # Get an all-zero action (minus gripper actuation) and set the arm command part
         # This assumes other parts of the action (e.g. base, head) are zero
         action = th.from_numpy(np.zeros_like(self.robot.action_space.sample())[:-1])
-        action[self.arm_command_start_idx:self.arm_command_end_idx] = arm_command
+        action[self.robot.arm_action_idx[self.robot.default_arm]] = arm_action
 
         # Convert to numpy tensor
         action = action.numpy()
@@ -197,8 +128,8 @@ class OmniGibsonInterface(MG_EnvInterface):
         action = th.from_numpy(action)
 
         # Extract the arm command part of the action and preprocess it
-        arm_command = action[self.arm_command_start_idx:self.arm_command_end_idx]
-        arm_command = self._preprocess_command(arm_command)
+        arm_action = action[self.robot.arm_action_idx[self.robot.default_arm]]
+        arm_command = self.robot.controllers[f"arm_{self.robot.default_arm}"]._preprocess_command(arm_action)
 
         # Get the current eef pose in the robot frame
         pos_relative, quat_relative = self.robot.get_relative_eef_pose()
@@ -344,68 +275,7 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
         gripper_right <omnigibson.controllers.multi_finger_gripper_controller.MultiFingerGripperController object at 0x7fcd140c5600> 1
         """
         self.robot = self.env.robots[0]
-        self.arm_command_start_idx = {}
-        self.arm_command_end_idx = {}
         self.arm_controller = {}
-        for arm_name in ["left", "right"]:
-            start_idx = 0
-            end_idx = None
-            arm_controller = None
-            for controller_type, controller in self.robot.controllers.items():
-                if controller_type != f"arm_{arm_name}":
-                    start_idx += controller.command_dim
-                else:
-                    end_idx = start_idx + controller.command_dim
-                    arm_controller = controller
-                    break
-            # assert end_idx is not None and arm_controller is not None
-            self.arm_command_start_idx[arm_name] = start_idx
-            self.arm_command_end_idx[arm_name] = end_idx
-            self.arm_controller[arm_name] = arm_controller
-        print('self.arm_command_start_idx', self.arm_command_start_idx)
-        print('self.arm_command_end_idx', self.arm_command_end_idx)
-
-    # Copy from BaseController of OG
-    def _preprocess_command(self, command, arm_name):
-        """
-        Clips + scales inputted @command according to self.command_input_limits and self.command_output_limits.
-        If self.command_input_limits is None, then no clipping will occur. If either self.command_input_limits
-        or self.command_output_limits is None, then no scaling will occur.
-
-        Args:
-            command (Array[float] or float): Inputted command vector
-
-        Returns:
-            Array[float]: Processed command vector
-        """
-        controller = self.arm_controller[arm_name]
-
-        # TODO: change this to left and right arm controller
-        # Make sure command is a th.tensor
-        command = th.tensor([command]) if type(command) in {int, float} else command
-        # We only clip and / or scale if self.command_input_limits exists
-        if controller._command_input_limits is not None:
-            # Clip
-            command = command.clip(*controller._command_input_limits)
-            if controller._command_output_limits is not None:
-                # If we haven't calculated how to scale the command, do that now (once)
-                if controller._command_scale_factor is None:
-                    controller._command_scale_factor = abs(
-                        controller._command_output_limits[1] - controller._command_output_limits[0]
-                    ) / abs(controller._command_input_limits[1] - controller._command_input_limits[0])
-                    controller._command_output_transform = (
-                        controller._command_output_limits[1] + controller._command_output_limits[0]
-                    ) / 2.0
-                    controller._command_input_transform = (
-                        controller._command_input_limits[1] + controller._command_input_limits[0]
-                    ) / 2.0
-                # Scale command
-                command = (
-                    command - controller._command_input_transform
-                ) * controller._command_scale_factor + controller._command_output_transform
-
-        # Return processed command
-        return command
 
     def get_robot_eef_pose(self, name):
         """
@@ -442,8 +312,10 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
 
         # Get an all-zero action (minus gripper actuation) and set the arm command part
         # This assumes other parts of the action (e.g. base, head) are zero
-        action = th.from_numpy(np.zeros_like(self.robot.action_space.sample()))
+        action = np.zeros_like(self.robot.action_space.sample())
         
+        control_dict = self.robot.get_control_dict()
+
         for arm_name in ["left", "right"]:
             target_pose = target_pose_dict[arm_name]
 
@@ -456,14 +328,12 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
             # Find the relative pose between the current eef pose and the target eef pose in the robot frame (delta pose)
             dpos = target_pos - pos_relative
 
-            dori = T.mat2quat(T.quat2mat(target_quat) @ T.quat2mat(quat_relative).T)
-            dori = T.quat2axisangle(dori)
+            dori = T.orientation_error(T.quat2mat(target_quat), T.quat2mat(quat_relative))
 
             # Compute delta pose
             err = th.cat([dpos, dori])
 
             # Replicate the logic from IKController
-            control_dict = self.robot.get_control_dict()
             arm_controller = self.robot.controllers[f"arm_{arm_name}"]
             arm_dof_idx = arm_controller.dof_idx
             manipulation_dof_idx = arm_dof_idx
@@ -475,96 +345,61 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
             #     manipulation_dof_idx = th.cat([arm_dof_idx, trunk_controller_dof_idx])
 
             j_eef = control_dict[f"eef_{arm_name}_jacobian_relative"][:, manipulation_dof_idx]
-            j_eef_pinv = th.linalg.pinv(j_eef)
-            delta_j = j_eef_pinv @ err
-            current_joint_pos = control_dict["joint_position"][manipulation_dof_idx]
-            target_joint_pos = current_joint_pos + delta_j
+            q = control_dict["joint_position"][manipulation_dof_idx]
+            q_lower_limit = arm_controller._control_limits[ControlType.get_type("position")][0][manipulation_dof_idx]
+            q_upper_limit = arm_controller._control_limits[ControlType.get_type("position")][1][manipulation_dof_idx]
+            q_dot_lower_limit = arm_controller._control_limits[ControlType.get_type("velocity")][0][manipulation_dof_idx]
+            q_dot_upper_limit = arm_controller._control_limits[ControlType.get_type("velocity")][1][manipulation_dof_idx]
 
-            # Clip values to be within the joint limits
-            target_joint_pos = target_joint_pos.clamp(
-                min=arm_controller._control_limits[ControlType.get_type("position")][0][manipulation_dof_idx],
-                max=arm_controller._control_limits[ControlType.get_type("position")][1][manipulation_dof_idx],
-            )
+            vel_err = err.numpy() / og.sim.get_physics_dt()
+            proportional_gain = 0.5
+
+            n = j_eef.shape[1]
+            epsilon = 1e-6
+            P = j_eef.T @ j_eef + epsilon * np.eye(j_eef.shape[1])
+            r = -proportional_gain * vel_err @ j_eef
+
+            velocity_gain = 0.5
+            q_dot_upper_limit_by_joint_limit = velocity_gain * (q_upper_limit - q) / og.sim.get_physics_dt()
+            q_dot_lower_limit_by_joint_limit = velocity_gain * (q_lower_limit - q) / og.sim.get_physics_dt()
+
+            q_dot_upper_limit = np.minimum(q_dot_upper_limit, q_dot_upper_limit_by_joint_limit)
+            q_dot_lower_limit = np.maximum(q_dot_lower_limit, q_dot_lower_limit_by_joint_limit)
+
+            G = np.vstack([np.eye(n), -np.eye(n)])
+            h = np.concatenate([q_dot_upper_limit, -q_dot_lower_limit])
+
+            q_dot = cp.Variable(n)
+            prob = cp.Problem(cp.Minimize(0.5 * cp.quad_form(q_dot, P) + r.T @ q_dot), [G @ q_dot <= h])
+            try:
+                prob.solve()
+            except cp.error.SolverError:
+                target_joint_pos = q
+            else:
+                if prob.status == "optimal":
+                    q_dot_val = q_dot.value
+                    delta_j = q_dot_val * og.sim.get_physics_dt()
+                    target_joint_pos = q + delta_j
+                else:
+                    target_joint_pos = q
 
             arm_command = target_joint_pos
             if arm_name == "left":
                 # arm_command, trunk_command = arm_command[:arm_dof_idx.shape[0]], arm_command[arm_dof_idx.shape[0]:]
-                arm_command = arm_controller._reverse_preprocess_command(arm_command)
+                arm_action = arm_controller._reverse_preprocess_command(arm_command)
                 # trunk_command = trunk_controller._reverse_preprocess_command(trunk_command)
-                action[self.robot.controller_action_idx[f"arm_{arm_name}"]] = arm_command
+                action[self.robot.controller_action_idx[f"arm_{arm_name}"]] = arm_action
                 # action[self.robot.controller_action_idx["trunk"]] = trunk_command
             else:
-                arm_command = arm_controller._reverse_preprocess_command(arm_command)
-                action[self.robot.controller_action_idx[f"arm_{arm_name}"]] = arm_command
+                arm_action = arm_controller._reverse_preprocess_command(arm_command)
+                action[self.robot.controller_action_idx[f"arm_{arm_name}"]] = arm_action
 
         # fill in the no operation actions for the base, camera and trunk
         for name, controller in self.robot.controllers.items():
             if name == 'base' or name == 'camera' or name == "trunk":
-                partial_action = controller.compute_no_op_action(self.robot.get_control_dict())
+                partial_action = controller.compute_no_op_action(control_dict)
                 action_idx = self.robot.controller_action_idx[name]
                 action[action_idx] = partial_action
-
-        # Convert to numpy tensor
-        action = action.numpy()
-
-        return action
-
-    def target_pose_to_action_no_unprocess(self, target_pose, relative=True):
-        """
-        Takes a target pose for the end effector controller (in the world frame) and returns an action
-        (usually a normalized delta pose action in the robot frame) to try and achieve that target pose.
-
-        Args:
-            target_pose (np.array): 4x4 target eef pose, in the world frame
-
-        Returns:
-            action (np.array): action compatible with env.step (minus gripper actuation), in the robot frame
-        """
-        # Legacy
-        del relative
-
-        # Ensure float32
-        target_pose = target_pose.astype(np.float32)
-
-        # Convert to torch tensor
-        target_pose = th.from_numpy(target_pose)
-        target_pose_dict = {}
-        target_pose_dict["left"] = target_pose[:4,:]
-        target_pose_dict["right"] = target_pose[4:,:]
-
-        # Get an all-zero action (minus gripper actuation) and set the arm command part
-        # This assumes other parts of the action (e.g. base, head) are zero
-        action = th.from_numpy(np.zeros_like(self.robot.action_space.sample()))
-        
-        for arm_name in ["left", "right"]:
-            target_pose = target_pose_dict[arm_name]
-
-            # Compute the eef target pose in the robot frame
-            target_pos, target_quat = T.relative_pose_transform(*T.mat2pose(target_pose), *self.robot.get_position_orientation())
-
-            # Get the current eef pose in the robot frame
-            pos_relative, quat_relative = self.robot.get_relative_eef_pose(arm_name)
-
-            # Find the relative pose between the current eef pose and the target eef pose in the robot frame (delta pose)
-            dpos = target_pos - pos_relative
-
-            dori = T.mat2quat(T.quat2mat(target_quat) @ T.quat2mat(quat_relative).T)
-            dori = T.quat2axisangle(dori)
-
-            # Assemble the arm command and undo the preprocessing
-            arm_command = th.cat([dpos, dori])
-
-            action[self.arm_command_start_idx[arm_name]:self.arm_command_end_idx[arm_name]] = arm_command
-
-        # fill in the no operation actions for the base and camera
-        for name, controller in self.robot.controllers.items():
-            if name == 'base' or name == 'camera':
-                partial_action = controller.compute_no_op_action(self.robot.get_control_dict())
-                action_idx = self.robot.controller_action_idx[name]
-                action[action_idx] = partial_action
-
-        # Convert to numpy tensor
-        action = action.numpy()
 
         return action
 
@@ -608,8 +443,7 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
                 arm_targets[name] = (target_pos, target_orn, gripper_state)
 
                 delta_pos = target_pos - current_pos
-                # delta_orn = orientation_error(T.quat2mat(T.axisangle2quat(target_orn_axisangle)), T.quat2mat(current_orn))
-                delta_orn = orientation_error(T.quat2mat(target_orn), T.quat2mat(current_orn))
+                delta_orn = T.orientation_error(T.quat2mat(target_orn), T.quat2mat(current_orn))
                 partial_action = th.cat((delta_pos, delta_orn))
             else:
                 partial_action = controller.compute_no_op_action(self.robot.get_control_dict())
@@ -655,12 +489,9 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
         target_pose_dict = {}
 
         for arm_name in ["left", "right"]:
-
-            # TODO: here all the actions, arm_command, target_pos are for sinlge arm
-
             # Extract the arm command part of the action and preprocess it
-            arm_command = action[self.arm_command_start_idx[arm_name]:self.arm_command_end_idx[arm_name]]
-            arm_command = self._preprocess_command(arm_command, arm_name)
+            arm_action = action[self.robot.arm_action_idx[arm_name]]
+            arm_command = self.robot.controllers[f"arm_{arm_name}"]._preprocess_command(arm_action)
 
             # Get the current eef pose in the robot frame
             pos_relative, quat_relative = self.robot.get_relative_eef_pose(arm_name)
@@ -730,6 +561,8 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
         eef_pose_right = self.get_robot_eef_pose('right') # 4x4
         # concatenate the eef poses
         eef_pose = np.concatenate([eef_pose_left, eef_pose_right], axis=0) # 8x4
+
+        base_pose = self.get_object_pose(self.robot)
         
         # object poses
         object_poses = self.get_object_poses()
@@ -747,6 +580,7 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
             gripper_action = self.action_to_gripper_action(action=action)
 
         datagen_info = DatagenInfo(
+            base_pose=base_pose,
             eef_pose=eef_pose,
             object_poses=object_poses,
             subtask_term_signals=subtask_term_signals,
@@ -867,5 +701,52 @@ class MG_TestTiagoCup(OmniGibsonInterfaceBimanual):
 
         signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
         signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
+
+        return signals
+
+
+class MG_TestR1Cup(OmniGibsonInterfaceBimanual):
+    """
+    Corresponds to OG test_tiago_cup task and variants.
+    """
+    def get_object_poses(self):
+        """
+        Gets the pose of each object relevant to MimicGen data generation in the current scene.
+
+        Returns:
+            object_poses (dict): dictionary that maps object name (str) to object pose matrix (4x4 np.array)
+        """
+        # two relative objects: coffee_cup and teacup
+        return dict(
+            coffee_cup=self.get_object_pose(obj=self.env.scene.object_registry("name", "coffee_cup")),
+            teacup=self.get_object_pose(obj=self.env.scene.object_registry("name", "teacup")),
+            breakfast_table=self.get_object_pose(obj=self.env.scene.object_registry("name", "breakfast_table")),
+        )
+
+    def get_subtask_term_signals(self):
+        """
+        Gets a dictionary of binary flags for each subtask in a task. The flag is 1
+        when the subtask has been completed and 0 otherwise. MimicGen only uses this
+        when parsing source demonstrations at the start of data generation, and it only
+        uses the first 0 -> 1 transition in this signal to detect the end of a subtask.
+
+        Returns:
+            subtask_term_signals (dict): dictionary that maps subtask name to termination flag (0 or 1)
+        """
+        signals = dict()
+
+        signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.scene.object_registry("name", "coffee_cup"))))
+
+        # TODO: need to check why the grasp signal can be -1 before 1
+        # TODO: the current setup cannot handle arm role change
+        # TODO: need to be changed
+        # TRUE = 1
+        # UNKNOWN = 0
+        # FALSE = -1
+        # signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"])))
+        # signals["ungrasp_right"] = abs(1 - abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"]))))
+
+        # signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
+        # signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
 
         return signals

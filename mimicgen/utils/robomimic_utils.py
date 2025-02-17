@@ -98,7 +98,7 @@ def create_env(
         render_offscreen=render_offscreen,
         use_image_obs=use_image_obs,
         use_depth_obs=use_depth_obs,
-        init_curobo=init_curobo,
+        # init_curobo=init_curobo,
     )
 
     return env

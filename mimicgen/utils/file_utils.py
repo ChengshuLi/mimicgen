@@ -263,7 +263,6 @@ def parse_source_dataset_bimanual(
 
         subtask_term_offset_ranges (list): sequence of subtask termination offset ranges
     """
-
     # get saved data information
 
     f = h5py.File(dataset_path, "r")
@@ -312,10 +311,9 @@ def parse_source_dataset_bimanual(
             # parse subtask indices using subtask termination signals
             ep_subtask_indices = []
             for subtask_ind in range(len(subtask_term_signals)):
-                subtask_term_signal = subtask_term_signals[subtask_ind]
                 subtask_term_step = task_spec[subtask_ind]["subtask_term_step"]
 
-                if subtask_term_signal is None:
+                if subtask_term_step is None:
                     # final subtask, finishes at end of demo
                     # OG uses "action" rather than "actions"
                     subtask_term_ind = demo_lens[ind]
