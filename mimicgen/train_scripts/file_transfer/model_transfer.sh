@@ -8,12 +8,11 @@
 
 ### generated data transfer
 
-# LOG_INDEX=20250120140017
-# LOG_INDEX=20250120135620
-# LOG_INDEX=20250120140016
-# LOG_INDEX=20250120135621
+# LOG_INDEX=20250122132200
+# LOG_INDEX=20250122101119
 
-LOG_INDEX=20250122132200
+LOG_INDEX=20250201214318
+# LOG_INDEX=20250201213350
 
 remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/logs/test_tiago_cup/$LOG_INDEX/"
 local_dir="/home/mengdi/b1k_datagen/mimicgen/logs/test_tiago_cup/$LOG_INDEX/"
@@ -28,4 +27,9 @@ echo $local_dir
 # from remote to local
 # rsync -avz  $local_dir mengdixu@scdt.stanford.edu:$remote_dir
 # rsync -avz --exclude-from='exclude.txt' mengdixu@scdt.stanford.edu:$remote_dir $local_dir
-rsync -aP mengdixu@scdt.stanford.edu:$remote_dir $local_dir
+
+# from remote to local
+# rsync -aP mengdixu@scdt.stanford.edu:$remote_dir $local_dir
+
+# from local to remote
+rsync -aP $local_dir mengdixu@scdt.stanford.edu:$remote_dir 

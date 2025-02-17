@@ -12,7 +12,7 @@
         "save": {
             "enabled": true,
             "every_n_seconds": null,
-            "every_n_epochs": 50,
+            "every_n_epochs": 100,
             "epochs": [],
             "on_best_validation": false,
             "on_best_rollout_return": false,
@@ -28,7 +28,7 @@
         "video_skip": 5,
         "rollout": {
             "enabled": false,
-            "n": 2,
+            "n": 20,
             "horizon": 1500,
             "rate": 100,
             "warmstart": 0,
@@ -36,7 +36,7 @@
         }
     },
     "train": {
-        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_D1_500_fps_2048.hdf5",
+        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_D1_500_fps_2048_color.hdf5",
         "output_dir": "./logs",
         "num_data_workers": 2,
         "hdf5_cache_mode": "low_dim",
@@ -93,7 +93,7 @@
             "n_groups": 8
         },
         "ema": {
-            "enabled": true,
+            "enabled": false,
             "power": 0.75
         },
         "ddpm": {

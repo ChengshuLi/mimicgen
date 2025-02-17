@@ -65,7 +65,7 @@ from mimicgen.configs import MG_TaskSpec
 from mimicgen.configs import config_factory as MG_ConfigFactory
 from mimicgen.datagen.data_generator import DataGenerator
 from mimicgen.env_interfaces.base import make_interface
-from mimicgen.train_scripts.train_debug import load_init_states
+from mimicgen.train_scripts.plot_init_states import load_init_states
 
 def sensor_customize_test_tiago_cup(env):
 
@@ -117,10 +117,14 @@ def sensor_customize_test_tiago_cup(env):
 
     return env
 
-def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_action_plot=False, start_epoch=1000):
+def evaluate_w_rollout(config, mg_config, device, args):
     """
     Train a model using the algorithm.
     """
+
+    load_checkpoint_folder=args.load_checkpoint_folder
+    check_action_plot=args.debug
+    eval_start_epoch=args.eval_start_epoch
 
     # time this run
     start_time = time.time()
@@ -197,6 +201,10 @@ def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_
     # env args: cameras to use come from debug camera video to write, or from observation collection
     envs = OrderedDict()
 
+    if args.headless:
+        from omnigibson.macros import gm
+        gm.HEADLESS = True
+
     env = RobomimicUtils.create_env(
         env_meta=env_meta,
         env_class=None,
@@ -232,36 +240,13 @@ def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_
         config.lock()
 
 
+
     print("\n============= Loading data =============")
     print("")
 
-    # data_logger = DataLogger(
-    #     log_dir,
-    #     config,
-    #     log_tb=config.experiment.logging.log_tb,
-    #     log_wandb=config.experiment.logging.log_wandb,
-    #     run_id = run_id,
-    # )
     # get stats for normalization observations and actions
-    trainset, validset = TrainUtils.load_data_for_training(
-        config, obs_keys=shape_meta["all_obs_keys"])
-    
-    # now the actions are retrieved from the model saved checkpoint
-    # # maybe retreve statistics for normalizing observations
-    # obs_normalization_stats = None
-    # if config.train.hdf5_normalize_obs:
-    #     obs_normalization_stats = trainset.get_obs_normalization_stats()
-
-    # # rename mean to offset, std to scale
-    # if obs_normalization_stats is not None:
-    #     obs_normalization_stats = {
-    #         k: {
-    #             "offset": v["mean"],
-    #             "scale": v["std"],
-    #         }
-    #         for k, v in obs_normalization_stats.items()
-    #     }
-    # action_normalization_stats = trainset.get_action_normalization_stats()
+    # trainset, validset = TrainUtils.load_data_for_training(
+        # config, obs_keys=shape_meta["all_obs_keys"])
 
     # print all warnings before training begins
     print("*" * 50)
@@ -271,8 +256,17 @@ def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_
     print("")
 
 
-    demo_name = trainset.demos[0]
-    demo_actions = trainset.get_action_traj(demo_name)['actions']
+
+    # get one demosntration to help debug the model
+    # demo_name = trainset.demos[0]
+    # demo_actions = trainset.get_action_traj(demo_name)['actions']
+
+    demo_name = None
+    demo_actions = None
+
+
+
+    # replay the actions from the demostration to sanity check the demo quality
     replay_from_demo = False
     if replay_from_demo:
         print("\n============= Start replaying the actions from the demostration =============")
@@ -290,18 +284,24 @@ def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_
         # exit the python code
         sys.exit()
 
-    init_states = None
 
-    check_performance_on_trianing_config = True
-    if check_performance_on_trianing_config:
-        # load initial states in the collected demo, so that we can check the trianing performance
-        init_states_all = load_init_states(data_name='D1_10')
+
+    # load initial states in the collected demo, so that we can check the trianing performance
+    init_states_list = None
+    if args.eval_on_train_init_states:
+        print("\n============= Load initial states in the demonstration =============")
+        print("")
+        # data_name = 'D1_10'
+        data_name = 'D1_64'
+        init_states_all = load_init_states(data_name=data_name)
         init_states_list = []
         for demo_key in init_states_all:
             init_states = {} 
             # random sample a key from the demo 
             init_states["states"] = init_states_all[demo_key]
             init_states_list.append(init_states)
+
+
 
     print("\n============= Start rollout evaluation =============")
     print("")
@@ -323,20 +323,15 @@ def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_
     load_checkpoint_files = os.listdir(ckpt_dir)
 
     epoch_list = [int(file_name.split('_')[-1].split('.')[0]) for file_name in load_checkpoint_files]
-    epoch_list.sort()
-
-    # epoch_list = [epoch_list[-1]]
-    epoch_list = [epoch for epoch in epoch_list if epoch >= start_epoch]
-
+    epoch_list = [epoch for epoch in epoch_list if epoch >= eval_start_epoch] # filter ones larger than eval_start_epoch
     if epoch_list == []:
-        print('No checkpoint found for epoch >= {}'.format(start_epoch))
+        print('No checkpoint found for epoch >= {}'.format(eval_start_epoch))
         return None
-    
-    epoch_list.sort(reverse=True)   
+    epoch_list.sort(reverse=True) # start from the latest epoch
 
-    # epoch_list = [100, 300, 500, 700, 900, 1000, 1200, 1400, 1600, 1800, 2000, 2200]
-    epoch_list = [1500, 2200]
-
+    if args.sample_epoch:
+        # uniformly sample 10 epochs to evaluate
+        epoch_list = random.sample(epoch_list, 10)
 
     start_time = time.time()
     
@@ -366,7 +361,12 @@ def evaluate_w_rollout(config, mg_config, device, load_checkpoint_folder, check_
             sc_weight_0 = ckpt_dict_0['model']['nets']['policy.obs_encoder.nets.obs.obs_nets.combined::point_cloud.layers.0.weight']
             print(sc_weight == sc_weight_0)
 
-        num_episodes = config.experiment.rollout.n
+        # two ways to specify the number of episodes used to evaluate each ckpt
+        if args.num_episodes is not None:
+            num_episodes = args.num_episodes
+        else:
+            num_episodes = config.experiment.rollout.n
+
         print('start rollouts')
         all_rollout_logs, video_paths, action_info = TrainUtils.rollout_with_stats(
             policy=rollout_policy,
@@ -523,9 +523,7 @@ def main(args):
             config=config, 
             mg_config=mg_config, 
             device=device,
-            load_checkpoint_folder=args.load_checkpoint_folder,
-            check_action_plot=args.debug,
-            start_epoch=args.start_epoch,
+            args=args,
             )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
@@ -616,10 +614,35 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--start_epoch",
+        "--eval_start_epoch",
         type=int,
-        default=1000,
+        default=2000,
         help="the start epoch to evaluate the model",
+    )
+
+    parser.add_argument(
+        "--eval_on_train_init_states",
+        action='store_true',
+        help="whether to initialize the environment with the initial states in the training dataset",
+    )
+
+    parser.add_argument(
+        "--headless",
+        action='store_true',
+        help="whether to run the simulation in headless mode",
+    )
+
+    parser.add_argument(
+        "--sample_epoch",
+        action='store_true',
+        help="set this flag to run policy rollout",
+    )
+
+    parser.add_argument(
+        "--num_episodes",
+        type=int,
+        default=None,
+        help="number of episodes to evaluate the model",
     )
 
     # globals()['POLICY_ROLLOUT'] = True

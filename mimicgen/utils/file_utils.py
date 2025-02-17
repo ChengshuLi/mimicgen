@@ -485,21 +485,33 @@ def merge_all_hdf5(
     """
     source_hdf5s = glob(os.path.join(folder, "*.hdf5"))
 
-    print(source_hdf5s)
+    # print(source_hdf5s)
+    print('len source hdf5s', len(source_hdf5s))
+
 
     # get all timestamps and sort files from lowest to highest
     timestamps = []
     filtered_source_hdf5s = []
+    index = 0
     for source_hdf5_path in source_hdf5s:
+        index += 1
+        print('index', index)
         try:
             f = h5py.File(source_hdf5_path, "r")
         except Exception as e:
             print("WARNING: problem with file {}".format(source_hdf5_path))
             print("Exception: {}".format(e))
             continue
+        try:
+            # check if timestamp in file
+            timestamps.append(f["data"].attrs["timestamp"])
+            f.close()
+        except Exception as e:
+            print("WARNING: file {} does not have timestamp attribute".format(source_hdf5_path))
+            # breakpoint()
+            continue
         filtered_source_hdf5s.append(source_hdf5_path)
-        timestamps.append(f["data"].attrs["timestamp"])
-        f.close()
+        print("len filtered out one", len(filtered_source_hdf5s))
 
     assert len(timestamps) == len(filtered_source_hdf5s)
     inds = np.argsort(timestamps)

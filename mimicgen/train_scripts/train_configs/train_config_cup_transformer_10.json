@@ -37,7 +37,7 @@
         "env_meta_update_dict": {}
     },
     "train": {
-        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_fps_2048.hdf5",
+        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_D1_500_fps_2048.hdf5",
         "output_dir": "./logs",
         "num_data_workers": 2,
         "hdf5_cache_mode": "low_dim",
