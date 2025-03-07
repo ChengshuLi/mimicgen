@@ -43,7 +43,7 @@ class Waypoint(object):
         self.pose = np.concatenate([self.pose, other.pose], axis=0)
         self.gripper_action = np.concatenate([self.gripper_action, other.gripper_action], axis=0)
         self.noise = min(self.noise, other.noise)
-        # TODO
+        # TODO: the noise here is set to 0, can be change to help reduce the sim to real gap due to the sensor observation noises
         self.noise = 0.0
 
 
@@ -352,6 +352,61 @@ class WaypointTrajectory(object):
         # concatenate the trajectories
         self.waypoint_sequences += other.waypoint_sequences
 
+    def downsample_replay_traj(self, left_replay_waypoints, right_reaplay_waypoints, ds_ratio=1, asyn_ds_ratio=True):
+        # downsample the replay waypoints to reduce the hesitation problem
+        len_left_wp = len(left_replay_waypoints)
+        len_right_wp = len(right_reaplay_waypoints)
+
+        if ds_ratio == 1 or ds_ratio is None:
+            print('the replay waypoints are not downsampled')
+            return left_replay_waypoints, right_reaplay_waypoints
+        
+        # TODO: the grasping motion should not be downsampled??
+        # detect whether the left and right gripper action are changing
+        # breakpoint()
+
+        if asyn_ds_ratio:
+            # asyn downsample the waypoints regarding the gripper actions
+            print('asyn downsample the waypoints regarding the gripper actions')
+
+            # check when grasping starts for both hands
+            left_gripper_actions = np.array([waypoint.gripper_action[0] for waypoint in left_replay_waypoints])
+            right_gripper_actions = np.array([waypoint.gripper_action[1] for waypoint in right_reaplay_waypoints])
+            left_gripper_actions_diff = np.diff(left_gripper_actions)
+            right_gripper_actions_diff = np.diff(right_gripper_actions)
+            # check when the gripper actions are changing
+            left_gripper_actions_diff_idx = np.where(left_gripper_actions_diff != 0)[0]
+            right_gripper_actions_diff_idx = np.where(right_gripper_actions_diff != 0)[0]
+            if left_gripper_actions_diff_idx.size == 0: left_gripper_actions_diff_idx = np.array([len_left_wp])
+            if right_gripper_actions_diff_idx.size == 0: right_gripper_actions_diff_idx = np.array([len_left_wp])
+            # get the min number of the changing points
+            grasp_start_idx = np.min([left_gripper_actions_diff_idx[0], right_gripper_actions_diff_idx[0]])
+
+            left_before_grasp_ds = left_replay_waypoints[:grasp_start_idx:ds_ratio]
+            right_before_grasp_ds = right_reaplay_waypoints[:grasp_start_idx:ds_ratio]
+
+            grasp_ds_ratio = 2
+            left_after_grasp_ds = left_replay_waypoints[grasp_start_idx::grasp_ds_ratio]
+            right_after_grasp_ds = right_reaplay_waypoints[grasp_start_idx::grasp_ds_ratio]
+
+            # concatenate the downsampled waypoints
+            left_reaplay_wp_ds = left_before_grasp_ds + left_after_grasp_ds
+            right_reaplay_wp_ds = right_before_grasp_ds + right_after_grasp_ds
+
+            assert len(left_reaplay_wp_ds) == len(right_reaplay_wp_ds)
+            print('downsample wp from {} to {}'.format(len_left_wp, len(right_reaplay_wp_ds)))
+        
+        else:        
+            # uniformly downsample the waypoints
+            print('uniformly downsample the waypoints')
+            left_reaplay_wp_ds = left_replay_waypoints[::ds_ratio]
+            right_reaplay_wp_ds = right_reaplay_waypoints[::ds_ratio]
+            assert len(left_reaplay_wp_ds) == len(right_reaplay_wp_ds)
+            print('downsample wp from {} to {}'.format(len_left_wp, len(right_reaplay_wp_ds)))
+        
+        # breakpoint()
+        return left_reaplay_wp_ds, right_reaplay_wp_ds
+
     def execute(
         self, 
         env,
@@ -365,6 +420,8 @@ class WaypointTrajectory(object):
         attached_obj=None,
         phase_type=None,
         object_ref=None,
+        disable_marker_vis=False,
+        ds_ratio=1,
     ):
         """
         Main function to execute the trajectory. Will use env_interface.target_pose_to_action to
@@ -390,8 +447,8 @@ class WaypointTrajectory(object):
                 success (bool): whether the trajectory successfully solved the task or not
         """
 
-        print("execute")
-        breakpoint()
+        # print("execute")
+        # breakpoint()
 
         robot = env.env.robots[0]
 
@@ -409,11 +466,16 @@ class WaypointTrajectory(object):
                 "left": (left_waypoint_pos, left_waypoint_ori),
                 "right": (right_waypoint_pos, right_waypoint_ori)
             }
-            env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-            env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
-            env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+            
+            if not disable_marker_vis:
+                env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
+                env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+            
+            # TODO: need to remove the random seed when generating data
             th.manual_seed(3)
+
             action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose=eef_pose)
             local_env_step = 0
             states = []
@@ -425,8 +487,8 @@ class WaypointTrajectory(object):
             for mp_action in action_generator:
                 mp_action = mp_action.cpu().numpy()
                 state = env.get_state()["states"]
-                obs = env.get_observation()
-                # obs = env.get_obs_IL()
+                # obs = env.get_observation()
+                obs = env.get_obs_IL() # change to customized observation
                 datagen_info = env_interface.get_datagen_info(action=mp_action)
                 env.step(mp_action)
                 local_env_step += 1
@@ -556,10 +618,11 @@ class WaypointTrajectory(object):
             # TODO: These lines are for debugging purposes.
             # successes, traj_paths = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=False, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
             # full_result = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=True, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
-            env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-            env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
-            env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+            if not disable_marker_vis:
+                env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
+                env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
 
             success_status, traj_path = successes[0], traj_paths[0]
             # print("success status", success_status)
@@ -567,7 +630,7 @@ class WaypointTrajectory(object):
             # TODO: change the logic, if the motion planner fails, then we reply the trajectory
             if not success_status:
                 print('motion planning failed, breakpoint in waypoint.py')
-                breakpoint()
+                # breakpoint()
                 results = None
                 return results
             assert success_status, "motion planning failed"
@@ -628,29 +691,30 @@ class WaypointTrajectory(object):
 
             assert len(mp_actions) == len(left_eef_poses) == len(right_eef_poses)
             print('length of MP actions:', len(mp_actions))
-            breakpoint()
+            # breakpoint()
             # import pdb; pdb.set_trace()
             # For each motion planner action, we repeat it 3 times for the controllers to converge
             num_repeat = 1
             for i, mp_action in enumerate(mp_actions):
                 for _ in range(num_repeat):
                     state = env.get_state()["states"]
-                    obs = env.get_observation()
-                    # obs = env.get_obs_IL()
+                    # obs = env.get_observation()
+                    obs = env.get_obs_IL() # change to customized observation
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action)
-                    env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-                    env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-                    env.eef_goal_marker_left.set_position_orientation(*left_eef_poses[i])
-                    env.eef_goal_marker_right.set_position_orientation(*right_eef_poses[i])
+                    if not disable_marker_vis:
+                        env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                        env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                        env.eef_goal_marker_left.set_position_orientation(*left_eef_poses[i])
+                        env.eef_goal_marker_right.set_position_orientation(*right_eef_poses[i])
                     local_env_step += 1
                     states.append(state)
                     actions.append(mp_action)
                     observations.append(obs)
                     datagen_infos.append(datagen_info)
-                    # cur_success_metrics = env.is_success()
-                    # for k in success:
-                    #     success[k] = success[k] or cur_success_metrics[k]
+                    cur_success_metrics = env.is_success()
+                    for k in success:
+                        success[k] = success[k] or cur_success_metrics[k]
 
         # import pdb; pdb.set_trace()
         
@@ -678,7 +742,12 @@ class WaypointTrajectory(object):
 
         assert len(left_replay_waypoints) == len(right_replay_waypoints)
         print('length of replay actions:', len(left_replay_waypoints))
-        breakpoint()
+        
+        # TODO: need to check whether the downsampling should be added to all replay part?
+        # downsample the waypoints
+        left_replay_waypoints, right_replay_waypoints = self.downsample_replay_traj(left_replay_waypoints, right_replay_waypoints, ds_ratio)
+
+        # breakpoint()
         # For each pair of waypoints, we extract the pose for each hand and then convert to action
         # We also overwrite the gripper actions with the ones from the waypoints
         for left_waypoint, right_waypoint in zip(left_replay_waypoints, right_replay_waypoints):
@@ -689,37 +758,27 @@ class WaypointTrajectory(object):
             replay_action[env_interface.gripper_action_dim[0]] = left_waypoint.gripper_action[0]
             replay_action[env_interface.gripper_action_dim[1]] = right_waypoint.gripper_action[1]
 
-            # TODO: need to remove the marker when collecting the final data
-            # # Update the markers for visualization
-            # if env.eef_current_marker_left is not None:
-            #     env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-            # if env.eef_current_marker_right is not None:
-            #     env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            # if env.eef_goal_marker_left is not None:
-            #     env.eef_goal_marker_left.set_position_orientation(position=pose[0:3, 3], orientation=T.mat2quat(th.tensor(pose[0:3, 0:3])))
-            # if env.eef_goal_marker_right is not None:
-            #     env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
-
             state = env.get_state()["states"]
-            obs = env.get_observation()
-            # obs = env.get_obs_IL()
+            # obs = env.get_observation()
+            obs = env.get_obs_IL() # change to customized observation
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action)
             left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
             right_eef_pose = (pose[4:7, 3], T.mat2quat(th.tensor(pose[4:7, 0:3])))
-            env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-            env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            env.eef_goal_marker_left.set_position_orientation(*left_eef_pose)
-            env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
+            if not disable_marker_vis:
+                env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                env.eef_goal_marker_left.set_position_orientation(*left_eef_pose)
+                env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
             # import pdb; pdb.set_trace()
             local_env_step += 1
             states.append(state)
             actions.append(replay_action)
             observations.append(obs)
             datagen_infos.append(datagen_info)
-            # cur_success_metrics = env.is_success()
-            # for k in success:
-            #     success[k] = success[k] or cur_success_metrics[k]
+            cur_success_metrics = env.is_success()
+            for k in success:
+                success[k] = success[k] or cur_success_metrics[k]
 
         # import pdb; pdb.set_trace()
 

@@ -8,6 +8,7 @@ Base class for data generator.
 import h5py
 import sys
 import numpy as np
+import torch as th
 import pdb
 
 import mimicgen
@@ -292,12 +293,12 @@ class DataGenerator(object):
         elif distance_left_arm_to_traj_left_arm_object > distance_right_arm_to_traj_left_arm_object and distance_right_arm_to_traj_right_arm_object > distance_right_arm_to_traj_left_arm_object:
             change_role = True
             print('change role')
-            breakpoint()
+            # breakpoint()
         else:
             # TODO: if the change arm role constaints are not satisfied, will keep the original arm role
             print('distance comparison heuristic is not applicable, check corner cases')
             change_role = False
-            breakpoint()
+            # breakpoint()
             # raise ValueError('The distance comparison heuristic is not applicable, check corner cases')
 
         return change_role
@@ -352,6 +353,8 @@ class DataGenerator(object):
         video_skip=5,
         camera_names=None,
         pause_subtask=False,
+        disable_marker_vis=False,
+        ds_ratio=1,
     ):
         """
         Attempt to generate a new demonstration.
@@ -401,10 +404,11 @@ class DataGenerator(object):
         """
 
         # sample new task instance
+        env.customize_physical_properties() # change physical properties of the objects and robot for each task 
         env.reset()
         new_initial_state = env.get_state()
 
-
+        # TODO: need to reinfine the following function, the function is to make sure the robot is not in contact with the objects at the beginning
         # # # check collisions between robot and all other objects
         # # print('breakpoint before collision check')
         # # breakpoint()
@@ -440,14 +444,26 @@ class DataGenerator(object):
 
         # set camera postion
         import omnigibson as og
-        import torch as th
-        og.sim.viewer_camera.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        ) # viewer position
 
-        # TODO: need to change the sensor resolution based on requirement
-        sensor = env.env._external_sensors['external_sensor0']
+        # og.sim.viewer_camera.set_position_orientation(
+        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+        # ) # viewer position
+        # og.sim.viewer_camera.set_position_orientation(
+        #     position=th.tensor([ 2.7668, -0.0084,  1.9879]),
+        #     orientation=th.tensor([0.3260, 0.3297, 0.6300, 0.6229]),
+        # ) # viewer position
+        # # og.sim.viewer_camera.get_position_orientation()
+        # # (tensor([ 2.7668, -0.0084,  1.9879]), tensor([0.3260, 0.3297, 0.6300, 0.6229]))
+        # # if og.sim.viewer_camera.image_height != 180 or og.sim.viewer_camera.image_width != 320:
+        # og.sim.viewer_camera.image_height = 180
+        # og.sim.viewer_camera.image_width = 320
+        # og.sim.viewer_camera._add_modality_to_backend(modality='depth_linear')
+        # og.sim.viewer_camera._modalities = {"depth_linear", "rgb"}
+        # print('viewer intrinsic matrix', og.sim.viewer_camera.intrinsic_matrix)
+        # print('viewer pose', og.sim.viewer_camera.get_position_orientation())
+
+        # sensor = env.env._external_sensors['external_sensor0']
 
         # sensor config option 1: facing robot
         # sensor.set_position_orientation(
@@ -460,39 +476,31 @@ class DataGenerator(object):
         #     position=th.tensor([ 1.0693, -0.0211,  0.9937]),
         #     orientation=th.tensor([0.2479, 0.2451, 0.6590, 0.6665]),
             # )
-        sensor.set_position_orientation(
-            position=th.tensor([ 1.0304, -0.0309,  1.0272]),
-            orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
-        )
+        # sensor.set_position_orientation(
+        #     position=th.tensor([ 1.0304, -0.0309,  1.0272]),
+        #     orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
+        # )
 
         # sensor config option 3: camera zoomed in
         # sensor.set_position_orientation(
         #     position=th.tensor([ 0.1300, -0.0262,  0.8532]),
         #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
             # )
+        # sensor.add_modality("depth_linear")
+        # sensor.add_modality("rgb")
+        # sensor._add_modality_to_backend(modality='depth_linear')
+        # sensor._add_modality_to_backend(modality='rgb')
+        # sensor._modalities = {"depth_linear", "rgb"}
 
-        sensor.image_height = 180
-        sensor.image_width = 320
+        # if sensor.image_height != 180 or sensor.image_width != 320:
+        # sensor.image_height = 180
+        # sensor.image_width = 320
 
         # sensor.image_height = 1080
         # sensor.image_width = 1920
                 
-        sensor._add_modality_to_backend(modality='depth_linear')
-        sensor._modalities = {"depth_linear", "rgb"}
-
-        for _ in range(5): og.sim.render()
-
-        print(sensor.intrinsic_matrix)
-        print(sensor.get_position_orientation())
-
-        # TODO: need to change the agent sensor correspondingly
-
-        external_sensor_info = {
-            "pose": sensor.get_position_orientation(),
-            "intrinsic_matrix": sensor.intrinsic_matrix,
-            "image_height": sensor.image_height,
-            "image_width": sensor.image_width,
-        }
+        sensor_info = env.sensor_setup() # set up the sensor, pose, resolution for each task 
+        for _ in range(50): og.sim.render()
 
         # parse MP_end_step from the configuration file
         end_step_of_MP_local = self.parse_MP_end_step_local()
@@ -739,7 +747,7 @@ class DataGenerator(object):
 
                 print('MP_end_steps', MP_end_steps)
 
-                breakpoint()
+                # breakpoint()
                 # Execute the trajectory and collect data.
                 exec_results = traj_to_execute.execute(
                     env=env,
@@ -754,6 +762,8 @@ class DataGenerator(object):
                     attached_obj=attached_obj_dict,
                     phase_type=self.task_spec[phase_ind][0][0]["phase_type"],
                     object_ref=object_ref,
+                    disable_marker_vis=disable_marker_vis,
+                    ds_ratio=ds_ratio,
                 )
                 if exec_results is None:
                     print('failed to execute the trajectory, breakpoint in data_generator.py')
@@ -794,7 +804,7 @@ class DataGenerator(object):
             src_demo_labels=generated_src_demo_labels,
             mp_end_steps=generated_demo_mp_end_steps,
             subtask_lengths=generated_demo_subtask_lengths,
-            external_sensor_info=external_sensor_info,
+            external_sensor_info=sensor_info,
         )
         # import pdb; pdb.set_trace()
         print('before returning the results')

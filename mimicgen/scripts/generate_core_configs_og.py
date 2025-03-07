@@ -27,9 +27,11 @@ SRC_DATA_DIR = os.path.join(mimicgen.__path__[0], "../datasets/source_og")
 
 # set base folder for where to copy each base config and generate new config files for data generation
 CONFIG_DIR = "/tmp/core_configs_og"
+CONFIG_DIR = "datasets/core_configs_og"
 
 # set base folder for newly generated datasets
 OUTPUT_FOLDER = "/tmp/core_datasets_og"
+OUTPUT_FOLDER = "datasets/core_datasets_og"
 
 # number of trajectories to generate (or attempt to generate)
 NUM_TRAJ = 2

@@ -32,6 +32,7 @@ import traceback
 import random
 import imageio
 import numpy as np
+import torch as th
 
 import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
@@ -101,6 +102,8 @@ def generate_dataset(
     render_image_names=None,
     pause_subtask=False,
     bimanual=False,
+    disable_marker_vis=False,
+    ds_ratio=1,
 ):
     """
     Main function to collect a new dataset with MimicGen.
@@ -231,6 +234,15 @@ def generate_dataset(
     use_image_obs = ((mg_config.obs.collect_obs and (len(mg_config.obs.camera_names) > 0)) if not write_video else False)
     use_depth_obs = False
 
+    if args.headless:
+        from omnigibson.macros import gm
+        gm.HEADLESS = True
+
+    # TODO: need to remove it, this only works for test_r1_cup task
+    # this is a hack to change the task name to test_r1_cup_D1
+    D_type = mg_config.experiment.task.name.split('_')[-1]
+    mg_config.experiment.task.name = f'test_r1_cup_{D_type}'
+
     # TODO: why here is the robomimicutil, not omnigibsonutil?
     # simulation environment
     env = RobomimicUtils.create_env(
@@ -316,26 +328,25 @@ def generate_dataset(
     num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
 
-    # TODO: need to make this specialized for different tasks
-    # including changing the properties of different objects
-
-    # Increase gripper friction
-    state = og.sim.dump_state()
-    og.sim.stop()
-    target_friction = 2.0
-    gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
-        prim_path=f"{env.env.robots[0].prim_path}/gripper_mat",
-        name="gripper_material",
-        static_friction=target_friction,
-        dynamic_friction=target_friction,
-        restitution=None,
-    )
-    for links in env.env.robots[0].finger_links.values():
-        for link in links:
-            for msh in link.collision_meshes.values():
-                msh.apply_physics_material(gripper_mat)
-    og.sim.play()
-    og.sim.load_state(state)
+    # The following are moved to env.customize_physical_properties()
+    # which are changing object or robot specific properites
+    # # Increase gripper friction
+    # state = og.sim.dump_state()
+    # og.sim.stop()
+    # target_friction = 2.0
+    # gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
+    #     prim_path=f"{env.env.robots[0].prim_path}/gripper_mat",
+    #     name="gripper_material",
+    #     static_friction=target_friction,
+    #     dynamic_friction=target_friction,
+    #     restitution=None,
+    # )
+    # for links in env.env.robots[0].finger_links.values():
+    #     for link in links:
+    #         for msh in link.collision_meshes.values():
+    #             msh.apply_physics_material(gripper_mat)
+    # og.sim.play()
+    # og.sim.load_state(state)
 
     # notebook = env.env.scene.object_registry("name", "notebook")
     # notebook.links['base_link'].density = 10
@@ -354,8 +365,11 @@ def generate_dataset(
     # og.sim.play()
     # og.sim.load_state(state)
     # for _ in range(10): og.sim.step()
-    
-    failed_generation_num = 0
+    # if mg_config.experiment.task.name.startswith("test_r1_cup"):
+    #     breakpoint()
+    #     env.sensor_setup()
+
+    mp_failure_num = 0
     while True:
         # generate trajectory
         try:
@@ -371,6 +385,8 @@ def generate_dataset(
                 video_skip=video_skip,
                 camera_names=render_image_names,
                 pause_subtask=pause_subtask,
+                disable_marker_vis=disable_marker_vis,
+                ds_ratio=ds_ratio,
             )
             print("==============================")
             print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
@@ -386,9 +402,10 @@ def generate_dataset(
             continue
         
         if generated_traj is None:
-            failed_generation_num += 1
-            print('Failed to generate trajectory')
-            print('total number of failed generation', failed_generation_num)
+            mp_failure_num += 1
+            num_attempts += 1
+            print('Failed to generate trajectory due to motion planner failure')
+            print(f'{mp_failure_num} mp failures out of {num_attempts}' )
             continue
 
         # remember selection of source demos for each subtask
@@ -446,7 +463,7 @@ def generate_dataset(
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} failed_generation_num not counted in total attempts'.format(failed_generation_num))
+        print('have {} mp_failure_num pout of {} trails so far'.format(mp_failure_num, num_attempts))
         print("*" * 50)
 
         # regularly log progress to disk every so often
@@ -637,7 +654,9 @@ def main(args):
             video_skip=args.video_skip,
             render_image_names=args.render_image_names,
             pause_subtask=args.pause_subtask,
-            bimanual=args.bimanual
+            bimanual=args.bimanual,
+            disable_marker_vis=args.disable_marker_vis,
+            ds_ratio=args.ds_ratio,
         )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
@@ -728,6 +747,22 @@ if __name__ == "__main__":
         "--seed",
         type=int,
         help="seed, to override the one in the config",
+        default=None,
+    )
+    parser.add_argument(
+        "--headless",
+        action='store_true',
+        help="whether to generate data in headless mode",
+    )
+    parser.add_argument(
+        "--disable_marker_vis",
+        action='store_true',
+        help="disable the marker visualization when generating data, the markers are mainly for vis the eef pose and target pose",
+    )
+    parser.add_argument(
+        "--ds_ratio",
+        type=int,
+        help="downsample rate for the replay data",
         default=None,
     )
 
