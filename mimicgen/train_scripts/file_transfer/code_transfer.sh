@@ -7,9 +7,24 @@
 # local_dir="/home/weiyu/data_drive/kdm/real_world"
 
 
+# #### curobo code transfer
+# remote_dir="/svl/u/mengdixu/b1k-datagen/curobo/"
+# local_dir="/home/mengdi/b1k_datagen/curobo/"
+
+# # copy the whole dir without the backslash
+
+# echo $remote_dir
+# echo $local_dir
+
+# # rsync -aP mengdixu@scdt.stanford.edu:$remote_dir $local_dir
+# rsync -avz --exclude '/home/mengdi/b1k_datagen/mimicgen/logs/' $local_dir mengdixu@scdt.stanford.edu:$remote_dir
 
 
 #### mimicgen code transfer
+# remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/datasets/core_configs_og/"
+# local_dir="/home/mengdi/b1k_datagen/mimicgen/datasets/core_configs_og/"
+# remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/datasets/source_og/"
+# local_dir="/home/mengdi/b1k_datagen/mimicgen/datasets/source_og/"
 remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/mimicgen/"
 local_dir="/home/mengdi/b1k_datagen/mimicgen/mimicgen/"
 

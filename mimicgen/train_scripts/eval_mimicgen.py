@@ -153,17 +153,6 @@ def evaluate_w_rollout(config, mg_config, device, args):
         sys.stdout = logger
         sys.stderr = logger
 
-    # # get the unique id of the run
-    # import wandb
-    # api = wandb.Api()
-    # # project = api.project("tiago_cup")
-    # runs = api.runs("tiago_cup")
-    # for run in runs:
-    #     if run.name == time_str:
-    #         run_id = run.id
-    # print(run_id)
-
-
     # read config to set up metadata for observation modalities (e.g. detecting rgb observations), load randomizers here, changed to CropRandomizer
     ObsUtils.initialize_obs_utils_with_config(config)
 
@@ -221,7 +210,24 @@ def evaluate_w_rollout(config, mg_config, device, args):
         init_curobo=False,
     )
 
-    env = sensor_customize_test_tiago_cup(env)
+    if mg_config.experiment.task.name.startswith('test_tiago_cup'):
+        env = sensor_customize_test_tiago_cup(env)
+    elif mg_config.experiment.task.name.startswith('test_r1_cup'):
+        env.policy_rollout = True
+        if "combined::color_point_cloud" in config.all_obs_keys:
+            env.with_color = True
+        elif "combined::point_cloud" in config.all_obs_keys:
+            env.with_color = False
+        else:
+            raise ValueError("No point cloud observation found in the config")
+        env.customize_physical_properties()
+        env.sensor_setup()
+
+    # read the controller and action index
+    robot = env.env.robots[0]
+    for name, controller in robot._controllers.items():
+        action_idx = robot.controller_action_idx[name]
+        print('name', name, 'controller', controller, 'action_idx', action_idx)
 
     env = EnvUtils.wrap_env_from_config(env, config=config) # apply environment warpper, if applicable
     envs[env.name] = env
@@ -256,26 +262,24 @@ def evaluate_w_rollout(config, mg_config, device, args):
     print("")
 
 
-
-    # get one demosntration to help debug the model
-    # demo_name = trainset.demos[0]
-    # demo_actions = trainset.get_action_traj(demo_name)['actions']
-
     demo_name = None
     demo_actions = None
 
-
-
     # replay the actions from the demostration to sanity check the demo quality
-    replay_from_demo = False
+    replay_from_demo = True
     if replay_from_demo:
         print("\n============= Start replaying the actions from the demostration =============")
         print("")
+        # get one demosntration to help debug the model
+        trainset, validset = TrainUtils.load_data_for_training(config, obs_keys=shape_meta["all_obs_keys"])
+        demo_name = trainset.demos[0]
+        demo_actions = trainset.get_action_traj(demo_name)['actions']
 
         env.reset()
         for step in range(demo_actions.shape[0]):
             ob_dict, r, done, truncated, _ = env.step(demo_actions[step])
             print("step: {}, reward: {}, done: {}, truncated: {}".format(step, r, done, truncated))
+            breakpoint()
             if done:
                 break
         
@@ -333,6 +337,10 @@ def evaluate_w_rollout(config, mg_config, device, args):
         # uniformly sample 10 epochs to evaluate
         epoch_list = random.sample(epoch_list, 10)
 
+    # for debugging
+    if args.single_epoch is not None:
+        epoch_list = [args.single_epoch]
+
     start_time = time.time()
     
     all_epoch_rollout_logs_save_to_ext = {}
@@ -353,7 +361,7 @@ def evaluate_w_rollout(config, mg_config, device, args):
         # debugging whether model are different
         check_whether_model_are_different = False
         if check_whether_model_are_different:
-            print(f"Loaded model weights from checkpoint")
+            print("Loaded model weights from checkpoint")
             breakpoint()
             sc_weight = ckpt_dict['model']['nets']['policy.obs_encoder.nets.obs.obs_nets.combined::point_cloud.layers.0.weight']
             load_checkpoint_path = os.path.join(ckpt_dir, 'model_epoch_{}.pth'.format(10))
@@ -643,6 +651,13 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="number of episodes to evaluate the model",
+    )
+
+    parser.add_argument(
+        "--single_epoch",
+        type=int,
+        default=None,
+        help="the single model to evaluate",
     )
 
     # globals()['POLICY_ROLLOUT'] = True

@@ -385,7 +385,7 @@ def write_demo_to_hdf5(
     src_demo_labels=None,
     mp_end_steps=None,
     subtask_lengths=None,
-    external_sensor_info=None,
+    sensor_info=None,
 ):
     """
     Helper function to write demonstration to an hdf5 file (robomimic format) in a folder. It will be 
@@ -452,11 +452,9 @@ def write_demo_to_hdf5(
         ep_data_grp.create_dataset("mp_end_steps", data=np.array(mp_end_steps))
     if subtask_lengths is not None:
         ep_data_grp.create_dataset("subtask_lengths", data=np.array(subtask_lengths))
-    
-    # todo: has bug in it
-    # if external_sensor_info is not None:
-    #     for k in external_sensor_info:
-    #         ep_data_grp.create_dataset("external_sensor_info/{}".format(k), data=np.array(external_sensor_info[k]))
+    if sensor_info is not None:
+        for k2 in sensor_info:            
+            ep_data_grp.create_dataset("sensor_info/{}".format(k2), data=np.array(sensor_info[k2]))
 
     # episode metadata
     if ("model" in initial_state) and (initial_state["model"] is not None):

@@ -804,7 +804,7 @@ class DataGenerator(object):
             src_demo_labels=generated_src_demo_labels,
             mp_end_steps=generated_demo_mp_end_steps,
             subtask_lengths=generated_demo_subtask_lengths,
-            external_sensor_info=sensor_info,
+            sensor_info=sensor_info,
         )
         # import pdb; pdb.set_trace()
         print('before returning the results')

@@ -10,10 +10,14 @@
 remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/datasets"
 local_dir="/home/mengdi/b1k_datagen/mimicgen/datasets/generated_data"
 
+# secify a file
+remote_dir="/svl/u/mengdixu/b1k-datagen/mimicgen/datasets/generated_data/test_r1_cup"
+local_dir="/home/mengdi/b1k_datagen/mimicgen/datasets/generated_data/test_r1_cup/robomimic_dataset_D0_rgb_clipped.hdf5"
+
 # copy the whole dir without the backslash
 
 echo $remote_dir
 echo $local_dir
 
 # rsync -aP mengdixu@scdt.stanford.edu:$remote_dir $local_dir
-rsync -avz  $local_dir mengdixu@scdt.stanford.edu:$remote_dir
+rsync -aP  $local_dir mengdixu@scdt.stanford.edu:$remote_dir

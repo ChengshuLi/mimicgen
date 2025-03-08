@@ -7,7 +7,8 @@
 
 # only use the following on partition with GPUs
 # h100, a100
-#SBATCH --gres=gpu:3090:1
+#SBATCH --gres=gpu:1
+##SBATCH --gres=gpu:3090:1
 # exclude low mem gpu
 ##SBATCH --exclude=viscam1,viscam7
 #SBATCH --exclude=viscam1,viscam12

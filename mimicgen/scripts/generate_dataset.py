@@ -431,7 +431,7 @@ def generate_dataset(
                 src_demo_labels=generated_traj["src_demo_labels"],
                 mp_end_steps=generated_traj["mp_end_steps"],
                 subtask_lengths=generated_traj["subtask_lengths"],
-                # external_sensor_info=generated_traj["external_sensor_info"],
+                sensor_info=generated_traj["sensor_info"],
             )
             selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
@@ -454,7 +454,7 @@ def generate_dataset(
                     src_demo_labels=generated_traj["src_demo_labels"],
                     mp_end_steps=generated_traj["mp_end_steps"],
                     subtask_lengths=generated_traj["subtask_lengths"],
-                    # external_sensor_info=generated_traj["external_sensor_info"],
+                    sensor_info=generated_traj["sensor_info"],
                 )
 
         num_attempts += 1

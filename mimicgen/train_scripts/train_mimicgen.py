@@ -174,6 +174,7 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         raise Exception("Dataset at provided path {} not found!".format(dataset_path))
     
     print("\n============= shape_meta =============")
+    print('config.all_obs_keys:', config.all_obs_keys)
     shape_meta = FileUtils.get_shape_metadata_from_dataset(
         dataset_path=dataset_path,
         action_keys=config.train.action_keys,
