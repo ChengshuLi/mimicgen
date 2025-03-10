@@ -44,6 +44,7 @@ def create_env(
     use_image_obs=None, 
     use_depth_obs=None, 
     init_curobo=True,
+    num_envs=1
 ):
     """
     Helper function to create the environment from dataset metadata and arguments.
@@ -99,6 +100,7 @@ def create_env(
         use_image_obs=use_image_obs,
         use_depth_obs=use_depth_obs,
         # init_curobo=init_curobo,
+        num_envs=num_envs
     )
 
     return env

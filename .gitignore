@@ -6,6 +6,7 @@ paper/
 /debug_imgs*/
 /debug_images*/
 /debug_image*/
+debug_videos*
 
 # Mac OSX
 .DS_Store

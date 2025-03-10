@@ -119,7 +119,7 @@ def make_generators(base_configs):
             dataset_path=os.path.join(SRC_DATA_DIR, "test_r1_cup.hdf5"),
             dataset_name="test_r1_cup",
             generation_path="{}/test_r1_cup".format(OUTPUT_FOLDER),
-            tasks=["test_tiago_cup_D0", "test_tiago_cup_D1", "test_tiago_cup_D2"],
+            tasks=["test_r1_cup_D0", "test_r1_cup_D1", "test_r1_cup_D2"],
             task_names=["D0", "D1", "D2"],
             select_src_per_subtask=False,
             selection_strategy="random",

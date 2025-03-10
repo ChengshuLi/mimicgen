@@ -34,6 +34,7 @@ class DataGenerator(object):
         demo_keys=None,
         bimanual=False,
         D2_sign=False,
+        ignore_failed_mp=True,
     ):
         """
         Args:
@@ -72,6 +73,8 @@ class DataGenerator(object):
             # get all demonstration keys from file
             demo_keys = MG_FileUtils.get_all_demos_from_dataset(dataset_path=self.dataset)
         self.demo_keys = demo_keys
+
+        self.ignore_failed_mp = ignore_failed_mp
 
         # parse source dataset
         self._load_dataset(dataset_path=dataset_path, demo_keys=demo_keys)
@@ -209,7 +212,7 @@ class DataGenerator(object):
 
     def merge_trajs(self, traj_list_all):
         # merge the waypoints for each arm
-        print('#################### in merge trajectories ####################')
+        # print('#################### in merge trajectories ####################')
         
         waypoint_traj_list = []
         for i in range(2):
@@ -221,7 +224,7 @@ class DataGenerator(object):
                         waypoint_traj.add_waypoint_sequence(seq)
                     else:
                         waypoint_traj.waypoint_sequences[-1].sequence += seq.sequence
-                    print('num waypoints:', len(waypoint_traj.waypoint_sequences[-1].sequence))
+                    # print('num waypoints:', len(waypoint_traj.waypoint_sequences[-1].sequence))
             waypoint_traj_list.append(waypoint_traj)
         
         
@@ -292,12 +295,12 @@ class DataGenerator(object):
         elif distance_left_arm_to_traj_left_arm_object > distance_right_arm_to_traj_left_arm_object and distance_right_arm_to_traj_right_arm_object > distance_right_arm_to_traj_left_arm_object:
             change_role = True
             print('change role')
-            breakpoint()
+            # breakpoint()
         else:
             # TODO: if the change arm role constaints are not satisfied, will keep the original arm role
             print('distance comparison heuristic is not applicable, check corner cases')
             change_role = False
-            breakpoint()
+            # breakpoint()
             # raise ValueError('The distance comparison heuristic is not applicable, check corner cases')
 
         return change_role
@@ -343,7 +346,7 @@ class DataGenerator(object):
     def generate(
         self,
         env,
-        env_interface,
+        env_interfaces,
         select_src_per_subtask=False,
         transform_first_robot_pose=False,
         interpolate_from_last_target_pose=True,
@@ -403,6 +406,7 @@ class DataGenerator(object):
         # sample new task instance
         env.reset()
         new_initial_state = env.get_state()
+        num_envs = len(env.env.envs)
 
 
         # # # check collisions between robot and all other objects
@@ -441,49 +445,58 @@ class DataGenerator(object):
         # set camera postion
         import omnigibson as og
         import torch as th
-        og.sim.viewer_camera.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        ) # viewer position
-
-        # TODO: need to change the sensor resolution based on requirement
-        sensor = env.env._external_sensors['external_sensor0']
-
-        # sensor config option 1: facing robot
-        # sensor.set_position_orientation(
+        # og.sim.viewer_camera.set_position_orientation(
         #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
         #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        #     )
+        # ) # viewer position
+
+        for env_idx, e in enumerate(env.env.envs):
+            # TODO: need to change the sensor resolution based on requirement
+            sensor = e._external_sensors['external_sensor0']
+
+            if env_idx == 0:
+                sensor.set_position_orientation(position=th.tensor([ 3.22, -0.026,  2.476]),orientation=th.tensor([0.323, 0.329, 0.634, 0.621]),)
+            elif env_idx == 1:
+                sensor.set_position_orientation(position=th.tensor([ 19.18, -0.026,  2.476]),orientation=th.tensor([0.323, 0.329, 0.634, 0.621]),)
+            elif env_idx == 2:
+                sensor.set_position_orientation(position=th.tensor([ 35.14, -0.026,  2.476]),orientation=th.tensor([0.323, 0.329, 0.634, 0.621]),)
+
+            # sensor config option 1: facing robot
+            # sensor.set_position_orientation(
+            #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+            #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+            #     )
+            
+            # sensor config option 2: camera zoomed in facing the robot
+            # sensor.set_position_orientation(
+            #     position=th.tensor([ 1.0693, -0.0211,  0.9937]),
+            #     orientation=th.tensor([0.2479, 0.2451, 0.6590, 0.6665]),
+                # )
+            # sensor.set_position_orientation(
+            #     position=th.tensor([ 1.0304, -0.0309,  1.0272]),
+            #     orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
+            # )
+
+            # sensor config option 3: camera zoomed in
+            # sensor.set_position_orientation(
+            #     position=th.tensor([ 0.1300, -0.0262,  0.8532]),
+            #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
+                # )
+
+            sensor.image_height = 180
+            sensor.image_width = 320
+
+            # sensor.image_height = 1080
+            # sensor.image_width = 1920
+                    
+            sensor._add_modality_to_backend(modality='depth_linear')
+            sensor._add_modality_to_backend(modality='rgb')
+            sensor._modalities = {"depth_linear", "rgb"}
         
-        # sensor config option 2: camera zoomed in facing the robot
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 1.0693, -0.0211,  0.9937]),
-        #     orientation=th.tensor([0.2479, 0.2451, 0.6590, 0.6665]),
-            # )
-        sensor.set_position_orientation(
-            position=th.tensor([ 1.0304, -0.0309,  1.0272]),
-            orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
-        )
-
-        # sensor config option 3: camera zoomed in
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 0.1300, -0.0262,  0.8532]),
-        #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
-            # )
-
-        sensor.image_height = 180
-        sensor.image_width = 320
-
-        # sensor.image_height = 1080
-        # sensor.image_width = 1920
-                
-        sensor._add_modality_to_backend(modality='depth_linear')
-        sensor._modalities = {"depth_linear", "rgb"}
-
         for _ in range(5): og.sim.render()
 
-        print(sensor.intrinsic_matrix)
-        print(sensor.get_position_orientation())
+        # print(sensor.intrinsic_matrix)
+        # print(sensor.get_position_orientation())
 
         # TODO: need to change the agent sensor correspondingly
 
@@ -529,18 +542,29 @@ class DataGenerator(object):
         prev_executed_traj = None
 
         # save generated data in these variables
-        generated_states = []
-        generated_obs = []
-        generated_datagen_infos = []
-        generated_actions = []
-        generated_demo_mp_end_steps = []
-        generated_demo_subtask_lengths = []
-        generated_success = False
-        generated_src_demo_inds = [] # store selected src demo ind for each subtask in each trajectory
-        generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
+        generated_states = [[] for _ in range(num_envs)]
+        generated_obs = [[] for _ in range(num_envs)]
+        generated_datagen_infos = [[] for _ in range(num_envs)]
+        generated_actions = [[] for _ in range(num_envs)]
+        generated_demo_mp_end_steps = [[] for _ in range(num_envs)]
+        generated_demo_subtask_lengths = [[] for _ in range(num_envs)]
+        generated_success = [False for _ in range(num_envs)]
+        generated_src_demo_inds = [[] for _ in range(num_envs)] # store selected src demo ind for each subtask in each trajectory
+        generated_src_demo_labels = [[] for _ in range(num_envs)] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
+
+        # Set all envs to be valid at the start of a new data gen episode
+        env.valid_envs = [True] * num_envs
+        env.primitive.valid_envs = env.valid_envs
+
+        # remove later
+        # env.env.envs[1].scene.object_registry("name", "breakfast_table").set_position_orientation(position=th.tensor([50.0, 0.0, 0.0]))
+        # for _ in range(10): og.sim.step()
 
         # for left arms first
         for phase_ind in range(self.num_phases):
+            # # remove later
+            # if phase_ind < 1:
+            #     continue
             cur_phase_task_spec = self.task_spec[phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
@@ -549,227 +573,255 @@ class DataGenerator(object):
             subtask_ind_vals = np.sort(np.unique(np.concatenate((np.unique(all_subtask_inds[0]), np.unique(all_subtask_inds[1])))))
             num_subtasks = len(subtask_ind_vals) - 1
             
-            # a distance based heuristic to change the role of the two arms
-            # calculate the start of the replay part
-            # currently assume that the start point is the first subtask of the current phase
-            # TODO: need to change this to other starting point when the motion planner is integrated
-            start_step = subtask_ind_vals[0]
-            change_role = self.change_arm_role_heuristic(
-                env_interface,
-                start_step,
-                selected_src_demo_ind,
-                cur_phase_task_spec
-                )
+            # TODO: Modify this for vecotrized envs [IMPORTANT!!]
+            # # a distance based heuristic to change the role of the two arms
+            # # calculate the start of the replay part
+            # # currently assume that the start point is the first subtask of the current phase
+            # # TODO: need to change this to other starting point when the motion planner is integrated
+            # start_step = subtask_ind_vals[0]
+            # change_role = self.change_arm_role_heuristic(
+            #     env_interface,
+            #     start_step,
+            #     selected_src_demo_ind,
+            #     cur_phase_task_spec
+            #     )
 
-            if change_role:
-                # change the information for two arms
-                cur_phase_task_spec_new = []
-                cur_phase_task_spec_new.append(cur_phase_task_spec[1])
-                cur_phase_task_spec_new.append(cur_phase_task_spec[0])
-                cur_phase_task_spec = cur_phase_task_spec_new
-                all_subtask_inds_new = []
-                all_subtask_inds_new.append(all_subtask_inds[1])
-                all_subtask_inds_new.append(all_subtask_inds[0])
-                all_subtask_inds = all_subtask_inds_new
+            # if change_role:
+            #     # change the information for two arms
+            #     cur_phase_task_spec_new = []
+            #     cur_phase_task_spec_new.append(cur_phase_task_spec[1])
+            #     cur_phase_task_spec_new.append(cur_phase_task_spec[0])
+            #     cur_phase_task_spec = cur_phase_task_spec_new
+            #     all_subtask_inds_new = []
+            #     all_subtask_inds_new.append(all_subtask_inds[1])
+            #     all_subtask_inds_new.append(all_subtask_inds[0])
+            #     all_subtask_inds = all_subtask_inds_new
+            # remove later
+            change_role = False
 
             for subtask_ind_reordered in range(num_subtasks):
+                print("========== Phase {} Subtask {} ==========".format(phase_ind, subtask_ind_reordered))
 
-                selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
-                traj_list_all = [[],[]]
-                attached_obj_dict = {}
-                object_ref = {}
-                MP_end_steps = []
-
-                for arm_i, arm_name in enumerate(['arm_left', 'arm_right']):
-
-                    # need to recalculate the matched subtask_ind to retrieve the correct task spec
-                    local_task_spec = cur_phase_task_spec[arm_i]
-                    arm_spec_subtask_inds = all_subtask_inds[arm_i][0]
-                    arm_unique_subtask_inds = np.sort(np.unique(arm_spec_subtask_inds))
-                    subtask_ind = np.where(selected_src_subtask_inds[1] <= arm_unique_subtask_inds)[0][0] - 1
-
-                    print('==========================================')
-                    print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
-                    print('subtask start and end step', selected_src_subtask_inds)
-                    print('arm_spec_subtask_inds', arm_spec_subtask_inds)
-
-                    is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
-                    is_first_subtask_in_phase = (subtask_ind == 0)
-
-                    cur_datagen_info = env_interface.get_datagen_info()
-                    subtask_object_name = cur_phase_task_spec[arm_i][subtask_ind]["object_ref"]
-                    object_ref[arm_name] = subtask_object_name
-                    cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
-                    key_name = arm_name.replace('arm_', '')
-                    attached_obj_dict[key_name] = cur_phase_task_spec[arm_i][subtask_ind]["attached_obj"]
-                    MP_end_steps.append(end_step_of_MP_local[phase_ind][arm_i][subtask_ind])
+                traj_to_execute_all_env = []
+                MP_end_steps_per_env = []
+                for env_idx, single_env in enumerate(env.env.envs):
+                    selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
+                    traj_list_all = [[],[]]
+                    attached_obj_dict = {}
+                    object_ref = {}                
+                    MP_end_steps = []
                     
-                    # get poses
-                    src_ep_datagen_info = self.src_dataset_infos[selected_src_demo_ind]
-                    src_subtask_eef_poses = src_ep_datagen_info.eef_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
-                    # src_subtask_target_poses = src_ep_datagen_info.target_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
-                    src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
+                    for arm_i, arm_name in enumerate(['arm_left', 'arm_right']):
 
-                    if (arm_name == 'arm_left' and not change_role) or (arm_name == 'arm_right' and change_role):
-                        print('select left arm demo pose')
-                        src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
-                        # src_subtask_target_poses = src_subtask_target_poses[:,:4,:]
-                        src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
-                    elif (arm_name == 'arm_right' and not change_role) or (arm_name == 'arm_left' and change_role):
-                        print('select right arm demo pose')
-                        src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
-                        # src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
-                        src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
+                        # need to recalculate the matched subtask_ind to retrieve the correct task spec
+                        local_task_spec = cur_phase_task_spec[arm_i]
+                        arm_spec_subtask_inds = all_subtask_inds[arm_i][0]
+                        arm_unique_subtask_inds = np.sort(np.unique(arm_spec_subtask_inds))
+                        subtask_ind = np.where(selected_src_subtask_inds[1] <= arm_unique_subtask_inds)[0][0] - 1
 
-                    # get reference object pose from source demo
-                    src_subtask_object_pose = src_ep_datagen_info.object_poses[subtask_object_name][selected_src_subtask_inds[0]] if (subtask_object_name is not None) else None # 4 x 4
+                        # print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
+                        # print(f'env {env_idx} arm_name {arm_name} subtask start and end step', selected_src_subtask_inds)
+                        # print('arm_spec_subtask_inds', arm_spec_subtask_inds)
 
-                    # src_eef_poses = np.array(src_subtask_eef_poses)
-                    # if is_first_subtask or transform_first_robot_pose:
-                    #     # Source segment consists of first robot eef pose and the target poses. This ensures that
-                    #     # we will interpolate to the first robot eef pose in this source segment, instead of the
-                    #     # first robot target pose.
-                    #     # TODO: not sure about the meaning of this; need to check the first dimension is 1 more
-                    #     src_eef_poses = np.concatenate([src_subtask_eef_poses[0:1], src_subtask_target_poses], axis=0) # 107 x 8 x 4
-                    # else:
-                    #     # Source segment consists of just the target poses.
-                    #     src_eef_poses = np.array(src_subtask_target_poses)
+                        is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
+                        is_first_subtask_in_phase = (subtask_ind == 0)
 
-                    # account for extra timestep added to @src_eef_poses
-                    # src_subtask_gripper_actions = np.concatenate([src_subtask_gripper_actions[0:1], src_subtask_gripper_actions], axis=0) # 107 x2
+                        cur_datagen_info = env_interfaces[env_idx].get_datagen_info()
+                        subtask_object_name = cur_phase_task_spec[arm_i][subtask_ind]["object_ref"]
+                        object_ref[arm_name] = subtask_object_name
+                        cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
+                        key_name = arm_name.replace('arm_', '')
+                        attached_obj_dict[key_name] = cur_phase_task_spec[arm_i][subtask_ind]["attached_obj"]
+                        MP_end_steps.append(end_step_of_MP_local[phase_ind][arm_i][subtask_ind])
+                        
+                        # get poses
+                        src_ep_datagen_info = self.src_dataset_infos[selected_src_demo_ind]
+                        src_subtask_eef_poses = src_ep_datagen_info.eef_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
+                        # src_subtask_target_poses = src_ep_datagen_info.target_pose[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 8 x 4
+                        src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
-                    src_eef_poses = src_subtask_eef_poses
-                    # Transform source demonstration segment using relevant object pose.
-                    if subtask_object_name is not None:
-                        # print('cur_object_pose', cur_object_pose.shape)
-                        # print('src_eef_poses', src_eef_poses.shape)
-                        # print('src_subtask_object_pose', src_subtask_object_pose.shape)
-                        transformed_eef_poses = PoseUtils.transform_source_data_segment_using_object_pose(
-                            obj_pose=cur_object_pose, 
-                            src_eef_poses=src_eef_poses,
-                            src_obj_pose=src_subtask_object_pose)
-                        # transformed_eef_poses = np.concatenate([transformed_eef_poses_left, transformed_eef_poses_right], axis=1)
-                    else:
-                        # skip transformation if no reference object is provided
-                        transformed_eef_poses = src_eef_poses
+                        if (arm_name == 'arm_left' and not change_role) or (arm_name == 'arm_right' and change_role):
+                            # print('select left arm demo pose')
+                            src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
+                            # src_subtask_target_poses = src_subtask_target_poses[:,:4,:]
+                            src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
+                        elif (arm_name == 'arm_right' and not change_role) or (arm_name == 'arm_left' and change_role):
+                            # print('select right arm demo pose')
+                            src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
+                            # src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
+                            src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
 
-                    # We will construct a WaypointTrajectory instance to keep track of robot control targets 
-                    # that will be executed and then execute it.
-                    # traj_to_execute = WaypointTrajectory()
+                        # get reference object pose from source demo
+                        src_subtask_object_pose = src_ep_datagen_info.object_poses[subtask_object_name][selected_src_subtask_inds[0]] if (subtask_object_name is not None) else None # 4 x 4
 
-                    # TODO: change the interpolation to curobo motion planner
+                        # src_eef_poses = np.array(src_subtask_eef_poses)
+                        # if is_first_subtask or transform_first_robot_pose:
+                        #     # Source segment consists of first robot eef pose and the target poses. This ensures that
+                        #     # we will interpolate to the first robot eef pose in this source segment, instead of the
+                        #     # first robot target pose.
+                        #     # TODO: not sure about the meaning of this; need to check the first dimension is 1 more
+                        #     src_eef_poses = np.concatenate([src_subtask_eef_poses[0:1], src_subtask_target_poses], axis=0) # 107 x 8 x 4
+                        # else:
+                        #     # Source segment consists of just the target poses.
+                        #     src_eef_poses = np.array(src_subtask_target_poses)
 
-                    # if interpolate_from_last_target_pose and (not is_first_subtask_in_phase):
-                    #     # Interpolation segment will start from last target pose (which may not have been achieved).
+                        # account for extra timestep added to @src_eef_poses
+                        # src_subtask_gripper_actions = np.concatenate([src_subtask_gripper_actions[0:1], src_subtask_gripper_actions], axis=0) # 107 x2
 
-                    #     # TODO: since we did not execute the subtask within each phase, the assettion will fail -> remove the assertion
-                    #     # assert prev_executed_traj is not None
-                    #     # last_waypoint = prev_executed_traj.last_waypoint
+                        src_eef_poses = src_subtask_eef_poses
+                        # Transform source demonstration segment using relevant object pose.
+                        if subtask_object_name is not None:
+                            # print('cur_object_pose', cur_object_pose.shape)
+                            # print('src_eef_poses', src_eef_poses.shape)
+                            # print('src_subtask_object_pose', src_subtask_object_pose.shape)
+                            transformed_eef_poses = PoseUtils.transform_source_data_segment_using_object_pose(
+                                obj_pose=cur_object_pose, 
+                                src_eef_poses=src_eef_poses,
+                                src_obj_pose=src_subtask_object_pose)
+                            # transformed_eef_poses = np.concatenate([transformed_eef_poses_left, transformed_eef_poses_right], axis=1)
+                        else:
+                            # skip transformation if no reference object is provided
+                            transformed_eef_poses = src_eef_poses
 
-                    #     # instead, we get the last waypoint from the last subtask
-                    #     last_waypoint = traj_list_all[arm_i][-1].last_waypoint
-                    #     init_sequence = WaypointSequence(sequence=[last_waypoint])
-                    # else:
-                    # if True:
-                    # if arm_name == 'arm_left':
-                    #     # Interpolation segment will start from current robot eef pose.
-                    #     init_sequence = WaypointSequence.from_poses(
-                    #         poses=cur_datagen_info.eef_pose[None][:,:4,:], # 1 x 8 x 4
-                    #         gripper_actions=src_subtask_gripper_actions[0:1], # 1 x 1
-                    #         action_noise=cur_phase_task_spec[0][subtask_ind]["action_noise"],
-                    #     )
-                    # elif arm_name == 'arm_right':
-                    #     # Interpolation segment will start from current robot eef pose.
-                    #     init_sequence = WaypointSequence.from_poses(
-                    #         poses=cur_datagen_info.eef_pose[None][:,4:,:], # 1 x 4 x 4
-                    #         gripper_actions=src_subtask_gripper_actions[0:1], # 1 x 1
-                    #         action_noise=cur_phase_task_spec[1][subtask_ind]["action_noise"],
-                    #     )
+                        # We will construct a WaypointTrajectory instance to keep track of robot control targets 
+                        # that will be executed and then execute it.
+                        # traj_to_execute = WaypointTrajectory()
 
-                    # print('init_sequence[0].pose.shape', init_sequence[0].pose.shape) # 4 x 4
-                    # traj_to_execute.add_waypoint_sequence(init_sequence)
+                        # TODO: change the interpolation to curobo motion planner
 
-                    # Construct trajectory for the transformed segment.
-                    transformed_seq = WaypointSequence.from_poses(
-                        poses=transformed_eef_poses, # 107 x 4 x 4
-                        gripper_actions=src_subtask_gripper_actions,
-                        action_noise=local_task_spec[subtask_ind]["action_noise"],
-                    )
-                    transformed_traj = WaypointTrajectory()
-                    transformed_traj.add_waypoint_sequence(transformed_seq)
-                    # print('transformed_traj[10].pose.shape', transformed_traj[10].pose.shape) # 8 x 4
+                        # if interpolate_from_last_target_pose and (not is_first_subtask_in_phase):
+                        #     # Interpolation segment will start from last target pose (which may not have been achieved).
 
-                    # Merge this trajectory into our trajectory using linear interpolation.
-                    # Interpolation will happen from the initial pose (@init_sequence) to the first element of @transformed_seq.
-                    # traj_to_execute.merge(
-                    #     transformed_traj,
-                    #     num_steps_interp=local_task_spec[subtask_ind]["num_interpolation_steps"],
-                    #     num_steps_fixed=local_task_spec[subtask_ind]["num_fixed_steps"],
-                    #     action_noise=(float(local_task_spec[subtask_ind]["apply_noise_during_interpolation"]) * local_task_spec[subtask_ind]["action_noise"]),
-                    #     bimanual=self.bimanual
-                    # )
+                        #     # TODO: since we did not execute the subtask within each phase, the assettion will fail -> remove the assertion
+                        #     # assert prev_executed_traj is not None
+                        #     # last_waypoint = prev_executed_traj.last_waypoint
 
-                    # We initialized @traj_to_execute with a pose to allow @merge to handle linear interpolation
-                    # for us. However, we can safely discard that first waypoint now, and just start by executing
-                    # the rest of the trajectory (interpolation segment and transformed subtask segment).
-                    # traj_to_execute.pop_first()
+                        #     # instead, we get the last waypoint from the last subtask
+                        #     last_waypoint = traj_list_all[arm_i][-1].last_waypoint
+                        #     init_sequence = WaypointSequence(sequence=[last_waypoint])
+                        # else:
+                        # if True:
+                        # if arm_name == 'arm_left':
+                        #     # Interpolation segment will start from current robot eef pose.
+                        #     init_sequence = WaypointSequence.from_poses(
+                        #         poses=cur_datagen_info.eef_pose[None][:,:4,:], # 1 x 8 x 4
+                        #         gripper_actions=src_subtask_gripper_actions[0:1], # 1 x 1
+                        #         action_noise=cur_phase_task_spec[0][subtask_ind]["action_noise"],
+                        #     )
+                        # elif arm_name == 'arm_right':
+                        #     # Interpolation segment will start from current robot eef pose.
+                        #     init_sequence = WaypointSequence.from_poses(
+                        #         poses=cur_datagen_info.eef_pose[None][:,4:,:], # 1 x 4 x 4
+                        #         gripper_actions=src_subtask_gripper_actions[0:1], # 1 x 1
+                        #         action_noise=cur_phase_task_spec[1][subtask_ind]["action_noise"],
+                        #     )
 
-                    traj_to_execute = transformed_traj
+                        # print('init_sequence[0].pose.shape', init_sequence[0].pose.shape) # 4 x 4
+                        # traj_to_execute.add_waypoint_sequence(init_sequence)
 
-                    print('*****************************')
-                    print('finished processing one subtask for one arm')
-                    print('num sequences:', len(traj_to_execute.waypoint_sequences))
-                    for seq in traj_to_execute.waypoint_sequences:
-                        print('num waypoints:', len(seq.sequence))
+                        # Construct trajectory for the transformed segment.
+                        transformed_seq = WaypointSequence.from_poses(
+                            poses=transformed_eef_poses, # 107 x 4 x 4
+                            gripper_actions=src_subtask_gripper_actions,
+                            action_noise=local_task_spec[subtask_ind]["action_noise"],
+                        )
+                        transformed_traj = WaypointTrajectory()
+                        transformed_traj.add_waypoint_sequence(transformed_seq, env_idx=env_idx)
+                        # print('transformed_traj[10].pose.shape', transformed_traj[10].pose.shape) # 8 x 4
+
+                        # Merge this trajectory into our trajectory using linear interpolation.
+                        # Interpolation will happen from the initial pose (@init_sequence) to the first element of @transformed_seq.
+                        # traj_to_execute.merge(
+                        #     transformed_traj,
+                        #     num_steps_interp=local_task_spec[subtask_ind]["num_interpolation_steps"],
+                        #     num_steps_fixed=local_task_spec[subtask_ind]["num_fixed_steps"],
+                        #     action_noise=(float(local_task_spec[subtask_ind]["apply_noise_during_interpolation"]) * local_task_spec[subtask_ind]["action_noise"]),
+                        #     bimanual=self.bimanual
+                        # )
+
+                        # We initialized @traj_to_execute with a pose to allow @merge to handle linear interpolation
+                        # for us. However, we can safely discard that first waypoint now, and just start by executing
+                        # the rest of the trajectory (interpolation segment and transformed subtask segment).
+                        # traj_to_execute.pop_first()
+
+                        traj_to_execute = transformed_traj
+
+                        # print('*****************************')
+                        # print('finished processing one subtask for one arm')
+                        # print('num sequences:', len(traj_to_execute.waypoint_sequences))
+                        # for seq in traj_to_execute.waypoint_sequences:
+                        #     print('num waypoints:', len(seq.sequence))
+                    
+                        traj_list_all[arm_i].append(traj_to_execute)
                 
-                    traj_list_all[arm_i].append(traj_to_execute)
-                
-                traj_to_execute = self.merge_trajs(traj_list_all)
+                    # breakpoint()
+                    traj_to_execute = self.merge_trajs(traj_list_all)
 
-                # reformat the local info with the current subtask start and end steps
-                # TODO: the logic here can be problematic when other demonstration annotations, need to double check with other data demonstrations
-                for i in range(2):
-                    # Clip between selected_src_subtask_inds[0] and selected_src_subtask_inds[1]
-                    MP_end_steps[i] = min(max(MP_end_steps[i], selected_src_subtask_inds[0]), selected_src_subtask_inds[1])
-                    MP_end_steps[i] -= selected_src_subtask_inds[0]
+                    # reformat the local info with the current subtask start and end steps
+                    # for example, this converts MP_end_steps [2770, 2050] to [550, 330]
+                    # TODO: the logic here can be problematic when other demonstration annotations, need to double check with other data demonstrations
+                    for i in range(2):
+                        # Clip between selected_src_subtask_inds[0] and selected_src_subtask_inds[1]
+                        MP_end_steps[i] = min(max(MP_end_steps[i], selected_src_subtask_inds[0]), selected_src_subtask_inds[1])
+                        MP_end_steps[i] -= selected_src_subtask_inds[0]
 
-                if change_role:
-                    MP_end_steps = MP_end_steps[::-1]
-                    # TODO: need to change the attached_obj_dict as well
+                    if change_role:
+                        MP_end_steps = MP_end_steps[::-1]
+                        # TODO: need to change the attached_obj_dict as well
 
-                print('MP_end_steps', MP_end_steps)
+                    MP_end_steps_per_env.append(MP_end_steps)
+                    traj_to_execute_all_env.append(traj_to_execute)
+                    # breakpoint()
 
-                breakpoint()
+
+                # print('MP_end_steps', MP_end_steps_per_env)
+                # breakpoint()
+
                 # Execute the trajectory and collect data.
-                exec_results = traj_to_execute.execute(
+                results_all_env = traj_to_execute.execute(
                     env=env,
-                    env_interface=env_interface,
+                    env_interfaces=env_interfaces,
                     render=render,
                     video_writer=video_writer,
                     video_skip=video_skip,
                     camera_names=camera_names,
                     bimanual=self.bimanual,
-                    cur_subtask_end_step_MP=MP_end_steps,
+                    cur_subtask_end_step_MP=MP_end_steps_per_env,
                     # attached_obj=attached_obj[phase_ind][subtask_ind_reordered],
                     attached_obj=attached_obj_dict,
                     phase_type=self.task_spec[phase_ind][0][0]["phase_type"],
                     object_ref=object_ref,
+                    # TODO: Explain why I am doing this. Passing the trajectory to execute for all environments here instead of setting it in the waypoint class
+                    traj_to_execute_all_env=traj_to_execute_all_env,
+                    ignore_failed_mp=self.ignore_failed_mp
                 )
-                if exec_results is None:
-                    print('failed to execute the trajectory, breakpoint in data_generator.py')
-                    return None
+                print(f"Phase {phase_ind} Subtask ind: {subtask_ind_reordered} env.valid_envs: ", env.valid_envs)
+                # breakpoint()
+
+                # TODO: Fix this
+                # if exec_results is None:
+                #     print('failed to execute the trajectory, breakpoint in data_generator.py')
+                #     return None
 
                 # check that trajectory is non-empty
-                if len(exec_results["states"]) > 0:
-                    generated_states += exec_results["states"]
-                    generated_obs += exec_results["observations"]
-                    generated_datagen_infos += exec_results["datagen_infos"]
-                    generated_actions.append(exec_results["actions"])
-                    generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
-                    generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
-                    generated_success = generated_success or exec_results["success"]
-                    generated_src_demo_inds.append(selected_src_demo_ind)
-                    generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
+                for env_idx, exec_results in enumerate(results_all_env):
+                    if exec_results is None:
+                        print(f'failed to execute the trajectory for env {env_idx}, breakpoint in data_generator.py')
+                    
+                    if len(exec_results["states"]) > 0:
+                        generated_states[env_idx] = generated_states[env_idx] + exec_results["states"]
+                        generated_obs[env_idx] += exec_results["observations"].tolist()   # FIXME: observations are empty dicts right now. 
+                        generated_datagen_infos[env_idx] += exec_results["datagen_infos"].tolist()
+                        generated_actions[env_idx] += exec_results["actions"].tolist()
+                        generated_demo_mp_end_steps[env_idx].append(exec_results["mp_end_steps"])
+                        generated_demo_subtask_lengths[env_idx].append(exec_results["subtask_lengths"])
+                        # TODO: currently only checking if MP fails for determining success. Use task success as well
+                        # generated_success[env_idx] = generated_success[env_idx] or exec_results["success"]
+                        generated_success[env_idx] = env.valid_envs[env_idx]
+                        generated_src_demo_inds[env_idx].append(selected_src_demo_ind)
+                        val = selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int)
+                        val = val.tolist()
+                        generated_src_demo_labels[env_idx] += val
 
                 # remember last trajectory
                 prev_executed_traj = traj_to_execute
@@ -779,16 +831,16 @@ class DataGenerator(object):
 
         # TODO: why need to merge the generated actions
         # merge numpy arrays
-        if len(generated_actions) > 0:
-            generated_actions = np.concatenate(generated_actions, axis=0)
-            generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
+        # if len(generated_src_demo_labels) > 0:
+            # generated_actions = np.concatenate(generated_actions, axis=0)
+            # generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=1)
 
         results = dict(
             initial_state=new_initial_state,
-            states=generated_states,
+            states=generated_states, # NOTE: btw these states have data for all env. If er need per env, we need to change this!
             observations=generated_obs,
             datagen_infos=generated_datagen_infos,
-            actions=generated_actions,
+            actions=np.array(generated_actions),
             success=generated_success,
             src_demo_inds=generated_src_demo_inds,
             src_demo_labels=generated_src_demo_labels,
@@ -796,6 +848,5 @@ class DataGenerator(object):
             subtask_lengths=generated_demo_subtask_lengths,
             external_sensor_info=external_sensor_info,
         )
-        # import pdb; pdb.set_trace()
         print('before returning the results')
         return results

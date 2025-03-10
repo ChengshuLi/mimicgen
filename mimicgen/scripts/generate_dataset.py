@@ -32,6 +32,9 @@ import traceback
 import random
 import imageio
 import numpy as np
+np.set_printoptions(suppress=True, precision=3)
+import torch as th
+th.set_printoptions(sci_mode=False, precision=3)
 
 import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
@@ -101,6 +104,7 @@ def generate_dataset(
     render_image_names=None,
     pause_subtask=False,
     bimanual=False,
+    num_envs=1
 ):
     """
     Main function to collect a new dataset with MimicGen.
@@ -149,6 +153,8 @@ def generate_dataset(
     # set seed for generation
     random.seed(mg_config.experiment.seed)
     np.random.seed(mg_config.experiment.seed)
+    th.manual_seed(mg_config.experiment.seed)
+
 
     # create new folder for this data generation run
     base_folder = os.path.expandvars(os.path.expanduser(mg_config.experiment.generation.path))
@@ -231,6 +237,7 @@ def generate_dataset(
     use_image_obs = ((mg_config.obs.collect_obs and (len(mg_config.obs.camera_names) > 0)) if not write_video else False)
     use_depth_obs = False
 
+    # breakpoint()
     # TODO: why here is the robomimicutil, not omnigibsonutil?
     # simulation environment
     env = RobomimicUtils.create_env(
@@ -246,6 +253,7 @@ def generate_dataset(
         render_offscreen=write_video,
         use_image_obs=use_image_obs,
         use_depth_obs=use_depth_obs,
+        num_envs=num_envs
     )
     print("\n==== Using environment with the following metadata ====")
     print(json.dumps(env.serialize(), indent=4))
@@ -263,12 +271,15 @@ def generate_dataset(
         env_interface_type = mg_config.experiment.task.interface_type
 
     # create environment interface to use during data generation
-    env_interface = make_interface(
-        name=env_interface_name,
-        interface_type=env_interface_type,
-        # NOTE: env_interface takes underlying simulation environment, not robomimic wrapper
-        env=env.base_env,
-    )
+    env_interfaces = []
+    for e in env.base_env.envs:
+        env_interface = make_interface(
+            name=env_interface_name,
+            interface_type=env_interface_type,
+            # NOTE: env_interface takes underlying simulation environment, not robomimic wrapper
+            env=e,
+        )
+        env_interfaces.append(env_interface)
     print("Created environment interface: {}".format(env_interface))
 
     # self.arm_command_start_idx {'left': 5, 'right': 12}
@@ -298,10 +309,11 @@ def generate_dataset(
     print(data_generator)
     print("")
 
-    # we might write a video to show the data generation attempts
-    video_writer = None
-    if write_video:
-        video_writer = imageio.get_writer(video_path, fps=20)
+    # # remove later
+    # zero_action = np.zeros((num_envs, 21))
+    # for _ in range(200):
+    #     env.step(zero_action, video_writer=video_writer)
+
 
     # data generation statistics
     num_success = 0
@@ -323,17 +335,18 @@ def generate_dataset(
     state = og.sim.dump_state()
     og.sim.stop()
     target_friction = 2.0
-    gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
-        prim_path=f"{env.env.robots[0].prim_path}/gripper_mat",
-        name="gripper_material",
-        static_friction=target_friction,
-        dynamic_friction=target_friction,
-        restitution=None,
-    )
-    for links in env.env.robots[0].finger_links.values():
-        for link in links:
-            for msh in link.collision_meshes.values():
-                msh.apply_physics_material(gripper_mat)
+    for e in env.env.envs:
+        gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
+            prim_path=f"{e.robots[0].prim_path}/gripper_mat",
+            name="gripper_material",
+            static_friction=target_friction,
+            dynamic_friction=target_friction,
+            restitution=None,
+        )
+        for links in e.robots[0].finger_links.values():
+            for link in links:
+                for msh in link.collision_meshes.values():
+                    msh.apply_physics_material(gripper_mat)
     og.sim.play()
     og.sim.load_state(state)
 
@@ -356,34 +369,52 @@ def generate_dataset(
     # for _ in range(10): og.sim.step()
     
     failed_generation_num = 0
+    script_start_time = time.time()
     while True:
+        
+        # we might write a video to show the data generation attempts
+        video_writer = None
+        if write_video:
+            video_writer = []
+            for i in range(num_envs):
+                video_writer.append(imageio.get_writer(f"debug_videos/env{i}_trial{num_attempts}_{video_path}", fps=20))
+
         # generate trajectory
-        try:
-            start_time = time.time()
-            generated_traj = data_generator.generate(
-                env=env,
-                env_interface=env_interface,
-                select_src_per_subtask=mg_config.experiment.generation.select_src_per_subtask,
-                transform_first_robot_pose=mg_config.experiment.generation.transform_first_robot_pose,
-                interpolate_from_last_target_pose=mg_config.experiment.generation.interpolate_from_last_target_pose,
-                render=render,
-                video_writer=video_writer,
-                video_skip=video_skip,
-                camera_names=render_image_names,
-                pause_subtask=pause_subtask,
-            )
-            print("==============================")
-            print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
-            print("==============================")
-        except exceptions_to_except as e:
-            # problematic trajectory - do not have this count towards our total number of attempts, and re-try
-            print("")
-            print("*" * 50)
-            print("WARNING: got rollout exception {}".format(e))
-            print("*" * 50)
-            print("")
-            num_problematic += 1
-            continue
+        # try:
+        start_time = time.time()
+        generated_traj = data_generator.generate(
+            env=env,
+            env_interfaces=env_interfaces,
+            select_src_per_subtask=mg_config.experiment.generation.select_src_per_subtask,
+            transform_first_robot_pose=mg_config.experiment.generation.transform_first_robot_pose,
+            interpolate_from_last_target_pose=mg_config.experiment.generation.interpolate_from_last_target_pose,
+            render=render,
+            video_writer=video_writer,
+            video_skip=video_skip,
+            camera_names=render_image_names,
+            pause_subtask=pause_subtask,
+        )
+        print("==============================")
+        print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
+        print("==============================")
+
+        if write_video:
+            for i in range(num_envs):
+                video_writer[i].close()
+
+        # # except exceptions_to_except as e:
+        # except Exception as e:
+        #     # problematic trajectory - do not have this count towards our total number of attempts, and re-try
+        #     print("")
+        #     print("*" * 50)
+        #     print("WARNING: got rollout exception {}".format(e))
+        #     print("*" * 50)
+        #     print("")
+        #     num_problematic += 1
+        #     continue
+        # breakpoint()
+        successes = env.is_success()
+        print(f"Successes for trial {num_attempts}: ", successes)
         
         if generated_traj is None:
             failed_generation_num += 1
@@ -395,57 +426,59 @@ def generate_dataset(
         selected_src_demo_inds_all.append(generated_traj["src_demo_inds"])
 
         # check if generated trajectory was successful
-        success = bool(generated_traj["success"])
+        for env_idx in range(len(env.env.envs)):
+            # success = bool(generated_traj["success"][env_idx])
+            success = successes[env_idx]
 
-        if success:
-            num_success += 1
+            if success:
+                num_success += 1
 
-            # store successful demonstration
-            ep_lengths.append(generated_traj["actions"].shape[0])
-            MG_FileUtils.write_demo_to_hdf5(
-                folder=tmp_dataset_folder_path,
-                env=env,
-                initial_state=generated_traj["initial_state"],
-                states=generated_traj["states"],
-                observations=(generated_traj["observations"] if mg_config.obs.collect_obs else None),
-                datagen_info=generated_traj["datagen_infos"],
-                actions=generated_traj["actions"],
-                src_demo_inds=generated_traj["src_demo_inds"],
-                src_demo_labels=generated_traj["src_demo_labels"],
-                mp_end_steps=generated_traj["mp_end_steps"],
-                subtask_lengths=generated_traj["subtask_lengths"],
-                # external_sensor_info=generated_traj["external_sensor_info"],
-            )
-            selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
-        else:
-            num_failures += 1
-
-            # check if this failure should be kept
-            if mg_config.experiment.generation.keep_failed and \
-                (mg_config.experiment.max_num_failures is None) or (num_failures <= mg_config.experiment.max_num_failures):
-                
-                # save failed trajectory in separate folder
+                # store successful demonstration
+                ep_lengths.append(generated_traj["actions"][env_idx].shape[0])
                 MG_FileUtils.write_demo_to_hdf5(
-                    folder=tmp_dataset_failed_folder_path,
+                    folder=tmp_dataset_folder_path,
                     env=env,
                     initial_state=generated_traj["initial_state"],
-                    states=generated_traj["states"],
-                    observations=(generated_traj["observations"] if mg_config.obs.collect_obs else None),
-                    datagen_info=generated_traj["datagen_infos"],
-                    actions=generated_traj["actions"],
-                    src_demo_inds=generated_traj["src_demo_inds"],
-                    src_demo_labels=generated_traj["src_demo_labels"],
-                    mp_end_steps=generated_traj["mp_end_steps"],
-                    subtask_lengths=generated_traj["subtask_lengths"],
+                    states=generated_traj["states"][env_idx],
+                    observations=(generated_traj["observations"][env_idx] if mg_config.obs.collect_obs else None),
+                    datagen_info=generated_traj["datagen_infos"][env_idx],
+                    actions=generated_traj["actions"][env_idx],
+                    src_demo_inds=generated_traj["src_demo_inds"][env_idx],
+                    src_demo_labels=generated_traj["src_demo_labels"][env_idx],
+                    mp_end_steps=generated_traj["mp_end_steps"][env_idx],
+                    subtask_lengths=generated_traj["subtask_lengths"][env_idx],
                     # external_sensor_info=generated_traj["external_sensor_info"],
                 )
+                selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"][env_idx])
+            else:
+                num_failures += 1
 
-        num_attempts += 1
+                # check if this failure should be kept
+                if mg_config.experiment.generation.keep_failed and \
+                    (mg_config.experiment.max_num_failures is None) or (num_failures <= mg_config.experiment.max_num_failures):
+                    
+                    # save failed trajectory in separate folder
+                    MG_FileUtils.write_demo_to_hdf5(
+                        folder=tmp_dataset_failed_folder_path,
+                        env=env,
+                        initial_state=generated_traj["initial_state"],
+                        states=generated_traj["states"][env_idx],
+                        observations=(generated_traj["observations"][env_idx] if mg_config.obs.collect_obs else None),
+                        datagen_info=generated_traj["datagen_infos"][env_idx],
+                        actions=generated_traj["actions"][env_idx],
+                        src_demo_inds=generated_traj["src_demo_inds"][env_idx],
+                        src_demo_labels=generated_traj["src_demo_labels"][env_idx],
+                        mp_end_steps=generated_traj["mp_end_steps"][env_idx],
+                        subtask_lengths=generated_traj["subtask_lengths"][env_idx],
+                        # external_sensor_info=generated_traj["external_sensor_info"],
+                    )
+
+        num_attempts += num_envs
         print("")
         print("*" * 50)
-        print("trial {} success: {}".format(num_attempts, success))
-        print("have {} successes out of {} trials so far".format(num_success, num_attempts))
-        print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
+        # print("Total datapoints: {} Success: {}".format(num_attempts, generated_traj["success"]))
+        print("have {} successes out of {} total datapoints so far".format(num_success, num_attempts))
+        print("have {} failures out of {} total datapoints so far".format(num_failures, num_attempts))
         print('have {} failed_generation_num not counted in total attempts'.format(failed_generation_num))
         print("*" * 50)
 
@@ -521,6 +554,11 @@ def generate_dataset(
     print("\nStats Summary")
     print(json.dumps(stats, indent=4))
 
+    print("==============================")
+    print("Total Time taken for generation: {:.2f} seconds".format(time.time() - script_start_time))
+    print("==============================")
+
+    # breakpoint()
     # maybe render videos
     if mg_config.experiment.render_video:
         if (num_success > 0):
@@ -637,7 +675,8 @@ def main(args):
             video_skip=args.video_skip,
             render_image_names=args.render_image_names,
             pause_subtask=args.pause_subtask,
-            bimanual=args.bimanual
+            bimanual=args.bimanual,
+            num_envs=args.num_envs
         )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
@@ -729,6 +768,12 @@ if __name__ == "__main__":
         type=int,
         help="seed, to override the one in the config",
         default=None,
+    )
+    parser.add_argument(
+        "--num_envs",
+        type=int,
+        help="numebr of environments to use for parallel data generation",
+        default=3,
     )
 
     args = parser.parse_args()
