@@ -32,6 +32,10 @@ import traceback
 import random
 import imageio
 import numpy as np
+import torch as th
+th.set_printoptions(precision=3, sci_mode=False)
+import warnings
+warnings.filterwarnings('ignore', module='trimesh')
 
 import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
@@ -149,6 +153,8 @@ def generate_dataset(
     # set seed for generation
     random.seed(mg_config.experiment.seed)
     np.random.seed(mg_config.experiment.seed)
+    th.manual_seed(mg_config.experiment.seed)
+
 
     # create new folder for this data generation run
     base_folder = os.path.expandvars(os.path.expanduser(mg_config.experiment.generation.path))
@@ -298,11 +304,6 @@ def generate_dataset(
     print(data_generator)
     print("")
 
-    # we might write a video to show the data generation attempts
-    video_writer = None
-    if write_video:
-        video_writer = imageio.get_writer(video_path, fps=20)
-
     # data generation statistics
     num_success = 0
     num_failures = 0
@@ -355,8 +356,21 @@ def generate_dataset(
     # og.sim.load_state(state)
     # for _ in range(10): og.sim.step()
     
+    grasp_init_views_video_writer = None
+    if write_video:
+        run_dir = os.getcwd()
+        os.makedirs(f"{run_dir}/debug_videos/{video_path}", exist_ok=True) 
+        grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
+    
     failed_generation_num = 0
     while True:
+        print(f"======================= ATTEMPT {num_attempts} ========================")
+
+        # we might write a video to show the data generation attempts
+        video_writer = None
+        if write_video:
+            video_writer = imageio.get_writer(f"debug_videos/{video_path}/{num_attempts:04d}.mp4", fps=20)
+
         # generate trajectory
         try:
             start_time = time.time()
@@ -371,6 +385,7 @@ def generate_dataset(
                 video_skip=video_skip,
                 camera_names=render_image_names,
                 pause_subtask=pause_subtask,
+                grasp_init_views_video_writer=grasp_init_views_video_writer
             )
             print("==============================")
             print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
@@ -385,17 +400,30 @@ def generate_dataset(
             num_problematic += 1
             continue
         
+        num_attempts += 1
+        if write_video:
+            video_writer.close()
+        
+        # breakpoint()
+        
         if generated_traj is None:
             failed_generation_num += 1
-            print('Failed to generate trajectory')
-            print('total number of failed generation', failed_generation_num)
+            success = False
+            print("")
+            print("*" * 50)
+            print("trial {} success: {}".format(num_attempts, success))
+            print("have {} successes out of {} trials so far".format(num_success, num_attempts))
+            print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
+            print('have {} MP failures'.format(failed_generation_num))
+            print("*" * 50)
             continue
 
         # remember selection of source demos for each subtask
         selected_src_demo_inds_all.append(generated_traj["src_demo_inds"])
 
         # check if generated trajectory was successful
-        success = bool(generated_traj["success"])
+        # success = bool(generated_traj["success"])
+        success = env.is_success()
 
         if success:
             num_success += 1
@@ -440,13 +468,12 @@ def generate_dataset(
                     # external_sensor_info=generated_traj["external_sensor_info"],
                 )
 
-        num_attempts += 1
         print("")
         print("*" * 50)
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} failed_generation_num not counted in total attempts'.format(failed_generation_num))
+        print('have {} MP failures'.format(failed_generation_num))
         print("*" * 50)
 
         # regularly log progress to disk every so often
@@ -476,9 +503,6 @@ def generate_dataset(
         check_val = num_success if guarantee_success else num_attempts
         if check_val >= num_trials:
             break
-
-    if write_video:
-        video_writer.close()
 
     # merge all new created files
     print("\nFinished data generation. Merging per-episode hdf5s together...\n")
@@ -566,6 +590,9 @@ def generate_dataset(
     json_file_path = os.path.join(new_dataset_folder_path, "important_stats.json")
     MG_FileUtils.write_json(json_dic=final_important_stats, json_path=json_file_path)
 
+    if write_video:
+        grasp_init_views_video_writer.close()
+    
     # NOTE: we are not currently saving the choice of source human demonstrations for each trial,
     #       but you can do that if you wish -- the information is stored in @selected_src_demo_inds_all
     #       and @selected_src_demo_inds_succ

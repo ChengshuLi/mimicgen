@@ -1,5 +1,8 @@
 # MimicGen
 
+### commands
+1. python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_single_arm_cup_task_D1.json --auto-remove-exp --num_demos 2 --bimanual --seed 1 --video_path tiago_single_arm_cup
+
 <p align="center">
   <img width="95.0%" src="docs/images/mimicgen.gif">
 </p>

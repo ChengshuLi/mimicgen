@@ -209,7 +209,7 @@ class DataGenerator(object):
 
     def merge_trajs(self, traj_list_all):
         # merge the waypoints for each arm
-        print('#################### in merge trajectories ####################')
+        # print('#################### in merge trajectories ####################')
         
         waypoint_traj_list = []
         for i in range(2):
@@ -221,7 +221,7 @@ class DataGenerator(object):
                         waypoint_traj.add_waypoint_sequence(seq)
                     else:
                         waypoint_traj.waypoint_sequences[-1].sequence += seq.sequence
-                    print('num waypoints:', len(waypoint_traj.waypoint_sequences[-1].sequence))
+                    # print('num waypoints:', len(waypoint_traj.waypoint_sequences[-1].sequence))
             waypoint_traj_list.append(waypoint_traj)
         
         
@@ -352,6 +352,7 @@ class DataGenerator(object):
         video_skip=5,
         camera_names=None,
         pause_subtask=False,
+        grasp_init_views_video_writer=None
     ):
         """
         Attempt to generate a new demonstration.
@@ -482,8 +483,8 @@ class DataGenerator(object):
 
         for _ in range(5): og.sim.render()
 
-        print(sensor.intrinsic_matrix)
-        print(sensor.get_position_orientation())
+        # print(sensor.intrinsic_matrix)
+        # print(sensor.get_position_orientation())
 
         # TODO: need to change the agent sensor correspondingly
 
@@ -541,6 +542,11 @@ class DataGenerator(object):
 
         # for left arms first
         for phase_ind in range(self.num_phases):
+            # Don't execute rest of the phases if any of the previous phases failed (mostly due to failure in MP)
+            if not env.valid_env:
+                break 
+            # if phase_ind > 0:
+            #     break
             cur_phase_task_spec = self.task_spec[phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
@@ -554,12 +560,15 @@ class DataGenerator(object):
             # currently assume that the start point is the first subtask of the current phase
             # TODO: need to change this to other starting point when the motion planner is integrated
             start_step = subtask_ind_vals[0]
-            change_role = self.change_arm_role_heuristic(
-                env_interface,
-                start_step,
-                selected_src_demo_ind,
-                cur_phase_task_spec
-                )
+            
+            # Uncomment later. 
+            # change_role = self.change_arm_role_heuristic(
+            #     env_interface,
+            #     start_step,
+            #     selected_src_demo_ind,
+            #     cur_phase_task_spec
+            #     )
+            change_role = False
 
             if change_role:
                 # change the information for two arms
@@ -573,6 +582,7 @@ class DataGenerator(object):
                 all_subtask_inds = all_subtask_inds_new
 
             for subtask_ind_reordered in range(num_subtasks):
+                print("========== Phase {} Subtask {} ==========".format(phase_ind, subtask_ind_reordered))
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
@@ -588,10 +598,10 @@ class DataGenerator(object):
                     arm_unique_subtask_inds = np.sort(np.unique(arm_spec_subtask_inds))
                     subtask_ind = np.where(selected_src_subtask_inds[1] <= arm_unique_subtask_inds)[0][0] - 1
 
-                    print('==========================================')
-                    print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
-                    print('subtask start and end step', selected_src_subtask_inds)
-                    print('arm_spec_subtask_inds', arm_spec_subtask_inds)
+                    # print('==========================================')
+                    # print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
+                    # print('subtask start and end step', selected_src_subtask_inds)
+                    # print('arm_spec_subtask_inds', arm_spec_subtask_inds)
 
                     is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
                     is_first_subtask_in_phase = (subtask_ind == 0)
@@ -611,12 +621,12 @@ class DataGenerator(object):
                     src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
                     if (arm_name == 'arm_left' and not change_role) or (arm_name == 'arm_right' and change_role):
-                        print('select left arm demo pose')
+                        # print('select left arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
                         # src_subtask_target_poses = src_subtask_target_poses[:,:4,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
                     elif (arm_name == 'arm_right' and not change_role) or (arm_name == 'arm_left' and change_role):
-                        print('select right arm demo pose')
+                        # print('select right arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
                         # src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
@@ -716,11 +726,11 @@ class DataGenerator(object):
 
                     traj_to_execute = transformed_traj
 
-                    print('*****************************')
-                    print('finished processing one subtask for one arm')
-                    print('num sequences:', len(traj_to_execute.waypoint_sequences))
-                    for seq in traj_to_execute.waypoint_sequences:
-                        print('num waypoints:', len(seq.sequence))
+                    # print('*****************************')
+                    # print('finished processing one subtask for one arm')
+                    # print('num sequences:', len(traj_to_execute.waypoint_sequences))
+                    # for seq in traj_to_execute.waypoint_sequences:
+                    #     print('num waypoints:', len(seq.sequence))
                 
                     traj_list_all[arm_i].append(traj_to_execute)
                 
@@ -737,9 +747,8 @@ class DataGenerator(object):
                     MP_end_steps = MP_end_steps[::-1]
                     # TODO: need to change the attached_obj_dict as well
 
-                print('MP_end_steps', MP_end_steps)
+                # print('MP_end_steps', MP_end_steps)
 
-                breakpoint()
                 # Execute the trajectory and collect data.
                 exec_results = traj_to_execute.execute(
                     env=env,
@@ -754,6 +763,7 @@ class DataGenerator(object):
                     attached_obj=attached_obj_dict,
                     phase_type=self.task_spec[phase_ind][0][0]["phase_type"],
                     object_ref=object_ref,
+                    grasp_init_views_video_writer=grasp_init_views_video_writer
                 )
                 if exec_results is None:
                     print('failed to execute the trajectory, breakpoint in data_generator.py')
@@ -797,5 +807,5 @@ class DataGenerator(object):
             external_sensor_info=external_sensor_info,
         )
         # import pdb; pdb.set_trace()
-        print('before returning the results')
+        # print('before returning the results')
         return results

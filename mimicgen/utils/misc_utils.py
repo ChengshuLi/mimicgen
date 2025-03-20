@@ -5,6 +5,7 @@
 """
 A collection of miscellaneous utilities.
 """
+import cv2
 import time
 import json
 import numpy as np
@@ -12,6 +13,21 @@ import numpy as np
 from collections import deque, OrderedDict
 from contextlib import contextmanager
 
+def hori_concatenate_image(images):
+    # Ensure the images have the same height
+    image1 = images[0]
+    concatenated_image = image1
+    for i in range(1, len(images)):
+        image_i = images[i]
+        if image1.shape[0] != image_i.shape[0]:
+            # print("Images do not have the same height. Resizing the second image.")
+            height = image1.shape[0]
+            image_i = cv2.resize(image_i, (int(image_i.shape[1] * (height / image_i.shape[0])), height))
+
+        # Concatenate the images side by side
+        concatenated_image = np.concatenate((concatenated_image, image_i), axis=1)
+
+    return concatenated_image
 
 def add_red_border_to_frame(frame, ratio=0.02):
     """

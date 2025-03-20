@@ -673,9 +673,9 @@ class MG_TestTiagoCup(OmniGibsonInterfaceBimanual):
         """
         # two relative objects: coffee_cup and paper_cup
         return dict(
-            coffee_cup=self.get_object_pose(obj=self.env.task.object_scope["coffee_cup.n.01_1"]),
-            paper_cup=self.get_object_pose(obj=self.env.task.object_scope["dixie_cup.n.01_1"]),
-            breakfast_table=self.get_object_pose(obj=self.env.task.object_scope["breakfast_table.n.01_1"]),
+            coffee_cup=self.get_object_pose(obj=self.env.scene.object_registry("name", "coffee_cup")),
+            teacup=self.get_object_pose(obj=self.env.scene.object_registry("name", "teacup")),
+            breakfast_table=self.get_object_pose(obj=self.env.scene.object_registry("name", "breakfast_table")),
         )
     
     def get_subtask_term_signals(self):
@@ -690,17 +690,19 @@ class MG_TestTiagoCup(OmniGibsonInterfaceBimanual):
         """
         signals = dict()
 
-        # TODO: need to check why the grasp signal can be -1 before 1
-        # TODO: the current setup cannot handle arm role change
-        # TODO: need to be changed
-        # TRUE = 1
-        # UNKNOWN = 0
-        # FALSE = -1
-        signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"])))
-        signals["ungrasp_right"] = abs(1 - abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"]))))
+        signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.scene.object_registry("name", "coffee_cup"))))
 
-        signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
-        signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
+        # # TODO: need to check why the grasp signal can be -1 before 1
+        # # TODO: the current setup cannot handle arm role change
+        # # TODO: need to be changed
+        # # TRUE = 1
+        # # UNKNOWN = 0
+        # # FALSE = -1
+        # signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"])))
+        # signals["ungrasp_right"] = abs(1 - abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"]))))
+
+        # signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
+        # signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
 
         return signals
 
