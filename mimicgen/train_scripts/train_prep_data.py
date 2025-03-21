@@ -1,3 +1,4 @@
+import os
 import json
 import numpy as np
 import robomimic.utils.file_utils as FileUtils
@@ -14,35 +15,7 @@ from multiprocessing import Pool
 from functools import partial
 import sys
 import time
-
-# TODO: need to change the offset and fixed normalization range accordingly
-PCD_FIXED_OFFSET = np.array([ 2.885, -0.026,  2.533])
-PCD_FIXED_OFFSET = np.array([ 1.438, 0.041, 1.509])
-PCD_FIXED_NORMALIZATION_RANGE = np.array([0.9, 0.9, 0.9])
-
-# external sensor intrinsic matrix
-# K = np.array([
-#     [519.2078,   0.0000, 320.0000],
-#     [  0.0000, 560.5954, 180.0000],
-#     [  0.0000,   0.0000,   1.0000]
-#     ]) # 360 x 640
-K = np.array([
-    [259.6039,   0.0000, 160.0000],
-    [  0.0000, 280.2977,  90.0000],
-    [  0.0000,   0.0000,   1.0000]
-    ]) # 180 x 320
-
-
-# camera pose
-# option 1: position far away
-# CAMERA_POSITION = th.tensor([ 1.7492, -0.0424,  1.5371])
-# CAMERA_QUAT= th.tensor([0.3379, 0.3417, 0.6236, 0.6166])
-
-# option 2: position far away
-CAMERA_POSITION = th.tensor([ 1.0304, -0.0309,  1.0272])
-CAMERA_QUAT= th.tensor([0.2690, 0.2659, 0.6509, 0.6583])
-
-PCD_MAX_DEPTH = 2
+import copy
 
 # print with 3 decimal points
 np.set_printoptions(precision=3)
@@ -181,10 +154,8 @@ def debugging_camera_imgs(demo_data):
 
 
 # pcd sanity check
-def pcd_sanity_check(pc):
+def pcd_vis(pc):
     # visualize with open3D
-
-    print('enter sanity check')
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pc.reshape(-1, 3)) 
     axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0, 0, 0])
@@ -192,77 +163,81 @@ def pcd_sanity_check(pc):
     print('number points', pc.shape[0])
 
 
+def color_pcd_vis(color_pcd):
+    # visualize with open3D
+    pcd = o3d.geometry.PointCloud()
+    pcd.colors = o3d.utility.Vector3dVector(color_pcd[:, :3])
+    pcd.points = o3d.utility.Vector3dVector(color_pcd[:,3:]) 
+    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0, 0, 0])
+    o3d.visualization.draw_geometries([pcd, axis])
+    print('number points', color_pcd.shape[0])
+
+
 """code blocks"""
 
+def clipping_block(pc, pcd_offset, clip_bbox_size):
+    # clip based on a bbx around the mean of the point cloud
 
-def clipping_block_v0(pc):
-    # sensor facing the robot, the sensor is far away
-    min_z_range = np.min(pc[:, 2]) + 0.43
-    mask = pc[:, 2] < min_z_range
-    pc = pc[~mask]
+    x_index = 0
+    y_index = 1
+    z_index = 2
 
-    max_z_range = np.max(pc[:, 2]) - 0.6
-    mask = pc[:, 2] > max_z_range
-    pc = pc[~mask]
+    clip_box_size = {
+        'x': clip_bbox_size[0],
+        'y': clip_bbox_size[1],
+        'z': clip_bbox_size[2],
+    }
 
-    min_x_range = np.min(pc[:, 0]) + 0.3
-    mask = pc[:, 0] < min_x_range
-    pc = pc[~mask]
+    update_mean = False
+    if update_mean:
+        pcd_mean = {
+            'x': np.mean(pc[:, x_index]),
+            'y': np.mean(pc[:, y_index]),
+            'z': np.mean(pc[:, z_index]),
+        }
+    else:
+        pcd_mean = {
+            'x': pcd_offset[0],
+            'y': pcd_offset[1],
+            'z': pcd_offset[2],
+        }
 
-    max_x_range = np.max(pc[:, 0]) - 0.1
-    mask = pc[:, 0] > max_x_range
-    pc = pc[~mask]
+    mask = np.ones(pc.shape[0], dtype=bool)
 
-    min_y_range = np.min(pc[:, 1]) + 0.3
-    mask = pc[:, 1] < min_y_range
-    pc = pc[~mask]
+    min_x_range = pcd_mean['x'] - clip_box_size['x']/2
+    max_x_range = pcd_mean['x'] + clip_box_size['x']/2
+    mask_x = (pc[:, x_index] > min_x_range) * (pc[:, x_index] < max_x_range)
 
-    max_y_range = np.max(pc[:, 1]) - 0.3
-    mask = pc[:, 1] > max_y_range
-    pc = pc[~mask]
-        # pc[mask] = 0
-    return pc
+    min_y_range = pcd_mean['y'] - clip_box_size['y']/2
+    max_y_range = pcd_mean['y'] + clip_box_size['y']/2
+    mask_y = (pc[:, y_index] > min_y_range) * (pc[:, y_index] < max_y_range)
 
+    min_z_range = pcd_mean['z'] - clip_box_size['z']/2
+    max_z_range = pcd_mean['z'] + clip_box_size['z']/2
+    mask_z = (pc[:, z_index] > min_z_range) * (pc[:, z_index] < max_z_range)
 
-def clipping_block_v1(pc):
-    # sensor is a bit closer
-    min_x_range = np.min(pc[:, 0]) + 0.95
-    mask = pc[:, 0] < min_x_range
-    pc = pc[~mask]
+    mask = mask_x * mask_z * mask_y
 
-    max_x_range = np.max(pc[:, 0]) - 0.0
-    mask = pc[:, 0] > max_x_range
-    pc = pc[~mask]
+    pc_clip = pc[mask]
 
-    min_z_range = np.min(pc[:, 2]) + 0.0
-    mask = pc[:, 2] < min_z_range
-    pc = pc[~mask]
-
-    max_z_range = np.max(pc[:, 2]) - 0.0
-    mask = pc[:, 2] > max_z_range
-    pc = pc[~mask]
-
-    min_y_range = np.min(pc[:, 1]) + 0.25
-    mask = pc[:, 1] < min_y_range
-    pc = pc[~mask]
-
-    max_y_range = np.max(pc[:, 1]) - 0.2
-    mask = pc[:, 1] > max_y_range
-    pc = pc[~mask]
-        # pc[mask] = 0
-    return pc
+    return pc_clip, mask
 
 
-def compute_point_cloud_from_depth(
-        depth, 
+def compute_point_cloud_from_rgbd(
+        rgbd,
         K, 
+        pcd_offset,
+        pcd_norm_range,
+        clip_bbox_size,
         cam_to_img_tf=None,
         world_to_cam_tf=None, 
         pcd_step_vis=False, 
         max_depth=3, 
         sample_type='fps',
         num_points_to_sample=1024,
-        clip_scene=True):
+        clip_scene=True,
+        with_color=True
+        ):
     
     # K - 3x3 cam intrinsics matrix
     # tfs - 4x4 homogeneous global pose tf for cam
@@ -274,6 +249,8 @@ def compute_point_cloud_from_depth(
     # random_sample - whether to randomly sample points
     # num_points_to_sample - number of points to sample
     # clip_scene - whether to clip the scene
+
+    depth = rgbd[:, :, -1]
 
     h, w = depth.shape
     y, x = np.meshgrid(np.arange(h), np.arange(w), indexing="ij", sparse=False)
@@ -301,100 +278,59 @@ def compute_point_cloud_from_depth(
     # Create (H * W, 4) vector from pc
     pc = (pc @ cam_to_img_tf.T @ world_to_cam_tf.T)[:, :3].reshape(h, w, 3)
 
-    
-    # rotate_start_time = time.time()
     # rotate a point cloud
     mesh = o3d.geometry.TriangleMesh.create_coordinate_frame()
     R = mesh.get_rotation_matrix_from_xyz((0, np.pi, 0))
     pc = pc @ R.T
+    
+    # print('color pc shape', pc.shape) 
+    color_img = rgbd[:, :, :3].reshape(-1, 3)  # shape (H*W, 3)
     pc = pc.reshape(-1, 3)
-    # print('In compute pcd: new rotate time', time.time() - rotate_start_time)
-
-    # pcd = o3d.geometry.PointCloud()
-    # pcd.points = o3d.utility.Vector3dVector(pc_new.reshape(-1, 3)) 
-    # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0, 0, 0])
-    # o3d.visualization.draw_geometries([pcd, axis])
-    # import pdb; pdb.set_trace()
-
-
-
-    # vis_start_time = time.time()
-    # # visualize with open3D
-    # pcd = o3d.geometry.PointCloud()
-    # print('In compute pcd: init pcd time', time.time() - vis_start_time)
-    # pcd.points = o3d.utility.Vector3dVector(pc.reshape(-1, 3)) 
-    # print('In compute pcd: init pcd time + assign points', time.time() - vis_start_time)
-    # # flip the point clound to align the x, y axis
-    # mesh_time = time.time()
-    # mesh = o3d.geometry.TriangleMesh.create_coordinate_frame()
-    # print('In compute pcd: init mesh time', time.time() - mesh_time)
-    # R = mesh.get_rotation_matrix_from_xyz((0, np.pi, 0))
-    # print('In compute pcd: get rotation matrix', time.time() - mesh_time)
-    # pcd.rotate(R, center=(0, 0, 0))
-    # print('In compute pcd: pcd rotate time', time.time() - mesh_time)
-    # print('In compute pcd: construct o3d and rotate', time.time() - vis_start_time)
-
-    # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0, 0, 0])
-    # o3d.visualization.draw_geometries([pcd, axis])
-    # print('In compute pcd: visualize time', time.time() - vis_start_time)
-
-    # pc = np.asarray(pcd.points)
-    # import pdb; pdb.set_trace()
 
     if pcd_step_vis:
         print("")
         print('number points before clipping', pc.shape[0])
 
     if clip_scene:
-        # TODO: this part is not very robust right now, sometimes the point cloud can be none
-        # TODO: need to implement an early stop mechanism
+        # clip the scene
+        pc, mask_clip = clipping_block(
+            copy.deepcopy(pc),
+            pcd_offset,
+            clip_bbox_size
+            )
+        if pcd_step_vis:
+            print('number points after clipping', pc.shape[0])
 
-        # the clip mechanism when the sensor facing the table, and the sensor is far away
-        # filter out the floor
-        # pc = clipping_block_v0(pc)
-        # corp_time = time.time()
-        pc = clipping_block_v1(pc)
-        # print('In compute pcd: corp time:', time.time() - corp_time)
+    # transform 
+    pc -= pcd_offset
+    pc = pc / pcd_norm_range # # normalize the point cloud
 
-    if pcd_step_vis:
-        print('number points after clipping', pc.shape[0])
+    # get the clipped color
+    color_img = color_img[mask_clip]
+    color_img = color_img / 255.0 # noramlize the color
 
-    # transform the center of the point cloud to the origin
-    # fixed_offset = -np.mean(pc, axis=0)
-    # translate_start_time = time.time()
-    pc += PCD_FIXED_OFFSET
-    # pcd.translate(PCD_FIXED_OFFSET)
-    # print('In compute pcd: translate time', time.time() - translate_start_time)
-
-    # # normalize the point cloud
-    pc = pc / PCD_FIXED_NORMALIZATION_RANGE
-
-    # farthest point sampling
+    # downsample the pcd
     pcd_downsample_start_time = time.time()
     if sample_type == 'fps':
-        # print('pc shape', pc.shape)
-        # fps_samples_idx = fpsample.fps_sampling(pc, num_points_to_sample)
+        # farthest point sampling
         kdline_fps_samples_idx = fpsample.bucket_fps_kdline_sampling(pc, num_points_to_sample, h=5)
         pc = pc[kdline_fps_samples_idx]
-        # print('In compute pcd: fps time used', time.time() - pcd_downsample_start_time)
-        # pcd.points = o3d.utility.Vector3dVector(pc)
+        color_img = color_img[kdline_fps_samples_idx]
         if pcd_step_vis:
             print('after fps, number points', pc.shape[0])
-        
-
     elif sample_type=='random':
-        # down sample input pointcloud
+        # random sample input pointcloud
         if len(pc) > num_points_to_sample:
             indices = np.random.choice(len(pc), num_points_to_sample, replace=False)
             pc = pc[indices]
-            # pcd.points = o3d.utility.Vector3dVector(pc)
+            color_img = color_img[indices]
             if pcd_step_vis:
                 print('after random sample, number points', pc.shape[0])
-        # print('In compute pcd: random time used', time.time() - pcd_downsample_start_time)
-        # print('after random sample, number points', pc.shape[0])
 
     if pcd_step_vis:
         print("")
+
+    color_pcd = np.concatenate([color_img, pc], axis=-1)
 
     if pcd_step_vis:
         pcd = o3d.geometry.PointCloud()
@@ -405,11 +341,15 @@ def compute_point_cloud_from_depth(
         
     # # get points from the point cloud
     # pc = np.asarray(pcd.points)
+    if with_color:
+        assert color_pcd.shape[1] == 6
+        return color_pcd
+    else:
+        assert pc.shape[1] == 3
+        return pc
 
-    return pc
 
-
-def process_pointcloud_per_demo_parallel(obs, vis_sign=False, sample_type="fps"):
+def process_pointcloud_per_demo_parallel(rgbd, sample_type="fps", with_color=True, sensor_info=None):
     """
     get point cloud from depth information
     """
@@ -417,39 +357,27 @@ def process_pointcloud_per_demo_parallel(obs, vis_sign=False, sample_type="fps")
     print('start processing point cloud ... ')
 
     cur_time = time.time()
-    # third view key
-    rgbd = obs['external::external_sensor0::rgb']
-    depth = obs['external::external_sensor0::depth_linear']
-    print('depth shape', depth.shape)
     print('rgb shape', rgbd.shape)
 
-    # option 1: transformation matrix 
-    world_to_cam_tf = np.array([
-        [-1.126e-02, -5.381e-01,  8.428e-01,  1.749e+00],
-       [ 9.999e-01, -6.099e-03,  9.470e-03, -4.240e-02],
-       [ 4.449e-05,  8.429e-01,  5.381e-01,  1.537e+00],
-       [ 0.000e+00,  0.000e+00,  0.000e+00,  1.000e+00]])
-    
-    # option 2: transformation matrix 
-    world_to_cam_tf = T.pose2mat((CAMERA_POSITION, CAMERA_QUAT)).numpy()
-
-    # # for quick debugging
-    # depth = depth[500:510, :, :]
-    # print('depth shape', depth.shape)
     with Pool(processes=4) as pool:
+        # TODO: need to double check and verify
         pcd_demo = pool.map(
             partial(
-                compute_point_cloud_from_depth,
-                K=K,
+                compute_point_cloud_from_rgbd,
+                K=sensor_info['K'], 
+                pcd_offset=sensor_info['pcd_offset'],
+                pcd_norm_range=sensor_info['pcd_norm_range'],
+                clip_bbox_size=sensor_info['clip_bbox_size'],
                 cam_to_img_tf=None,
-                world_to_cam_tf=world_to_cam_tf,
+                world_to_cam_tf=sensor_info["world_to_cam_tf"],
                 pcd_step_vis=False,
-                max_depth=PCD_MAX_DEPTH,
+                max_depth=sensor_info['sensor_max_depth'],
                 sample_type=sample_type,
-                num_points_to_sample=NUM_POINTS_TO_SAMPLE,
-                clip_scene=True
+                num_points_to_sample=sensor_info['number_points_to_sample'],
+                clip_scene=True,
+                with_color=with_color
                 ),
-                depth
+                rgbd
                 )
     pcd_demo = np.array(pcd_demo)
 
@@ -460,7 +388,7 @@ def process_pointcloud_per_demo_parallel(obs, vis_sign=False, sample_type="fps")
     return pcd_demo
 
 
-def process_pointcloud_per_demo(obs, vis_sign=True, sample_type="fps"):
+def process_pointcloud_per_demo(rgbd, vis_sign=True, sample_type="fps", with_color=True, sensor_info=None):
     """
     get point cloud from depth information
     """
@@ -468,22 +396,8 @@ def process_pointcloud_per_demo(obs, vis_sign=True, sample_type="fps"):
     print('start processing point cloud ... ')
 
     cur_time = time.time()
-    # third view key
-    rgbd = obs['external::external_sensor0::rgb']
-    depth = obs['external::external_sensor0::depth_linear']
-    print('depth shape', depth.shape)
-    print('rgb shape', rgbd.shape)
-
-    # option 1: transformation matrix 
-    world_to_cam_tf = np.array([
-        [-1.126e-02, -5.381e-01,  8.428e-01,  1.749e+00],
-       [ 9.999e-01, -6.099e-03,  9.470e-03, -4.240e-02],
-       [ 4.449e-05,  8.429e-01,  5.381e-01,  1.537e+00],
-       [ 0.000e+00,  0.000e+00,  0.000e+00,  1.000e+00]])
+    print('rgbd shape', rgbd.shape)
     
-    # option 2: transformation matrix 
-    world_to_cam_tf = T.pose2mat((CAMERA_POSITION, CAMERA_QUAT)).numpy()
-
     if vis_sign:
         # start processing and visualizing the point cloud
         vis = o3d.visualization.Visualizer()
@@ -494,25 +408,33 @@ def process_pointcloud_per_demo(obs, vis_sign=True, sample_type="fps"):
     # without parallel processing 
     pcd_demo = []
     step = 0
-    depth_debug = depth[:100]
-    for depth_img in depth_debug:
+    
+    for i, rgbd_step in enumerate(rgbd):
         step += 1
-        
-        pcd = compute_point_cloud_from_depth(
-            depth_img, K, 
+        pcd = compute_point_cloud_from_rgbd(
+            rgbd=rgbd_step, 
+            K=sensor_info['K'], 
+            pcd_offset=sensor_info['pcd_offset'],
+            pcd_norm_range=sensor_info['pcd_norm_range'],
+            clip_bbox_size=sensor_info['clip_bbox_size'],
             cam_to_img_tf=None, 
-            world_to_cam_tf=world_to_cam_tf, 
+            world_to_cam_tf=sensor_info["world_to_cam_tf"], 
             pcd_step_vis=False, 
-            max_depth=PCD_MAX_DEPTH,
-            sample_type='random',
-            num_points_to_sample=NUM_POINTS_TO_SAMPLE,
-            clip_scene=True
+            max_depth=sensor_info['sensor_max_depth'],
+            sample_type='fps',
+            num_points_to_sample=sensor_info['number_points_to_sample'],
+            clip_scene=True,
+            with_color=with_color
             )
         pcd_demo.append(pcd)
 
         if vis_sign:
-            print('step', step, 'number of points', pcd.shape[0])
-            pcd_vis.points = o3d.utility.Vector3dVector(pcd)
+            # print('step', step, 'number of points', pcd.shape[0])
+            if with_color:
+                pcd_vis.colors = o3d.utility.Vector3dVector(pcd[:, :3])
+                pcd_vis.points = o3d.utility.Vector3dVector(pcd[:, 3:]) 
+            else:
+                pcd_vis.points = o3d.utility.Vector3dVector(pcd)
             
             if firstfirst:
                 vis.add_geometry(pcd_vis)
@@ -521,6 +443,7 @@ def process_pointcloud_per_demo(obs, vis_sign=True, sample_type="fps"):
                 vis.update_geometry(pcd_vis)
             vis.poll_events()
             vis.update_renderer()
+        # time.sleep(0.1)
     
     if vis_sign:
         vis.destroy_window()
@@ -536,7 +459,55 @@ def process_pointcloud_per_demo(obs, vis_sign=True, sample_type="fps"):
     return pcd_demo
 
 
-def parse_obs(obs, obs_type):
+def process_prop_per_demo(obs):
+    """
+    process the prop states for each demo
+    base_qvel, trunk_qpos, arm_left_qpos, arm_right_qpos, left_gripper_width, right_gripper_width
+    """
+
+    # base_qpos = obs['base_qpos'] # steps, 3
+    base_qvel = np.array(obs['base_qvel']) # steps, 3
+    trunk_qpos = np.array(obs['trunk_qpos']) # steps, 4
+    arm_left_qpos = np.array(obs['arm_left_qpos']) # steps, 6
+    arm_right_qpos = np.array(obs['arm_right_qpos']) # steps, 6
+    gripper_left_qpos = np.array(obs['gripper_left_qpos'])
+    left_gripper_width = np.array(gripper_left_qpos).sum(axis=1)[:,None] # steps, 1
+    gripper_right_qpos = np.array(obs['gripper_right_qpos'])
+    right_gripper_width = np.array(gripper_right_qpos).sum(axis=1)[:,None] # steps, 1
+    prop_state = np.concatenate((base_qvel, trunk_qpos, arm_left_qpos, arm_right_qpos, left_gripper_width, right_gripper_width), axis=1) # steps, 21
+
+    return prop_state
+
+
+def process_bimanual_state_per_demo(obs):
+    """
+    process the bimanual states for each demo
+    base_qvel, trunk_qpos, arm_left_qpos, arm_right_qpos, left_gripper_width, right_gripper_width
+    """
+    arm_left_qpos = np.array(obs['arm_left_qpos']) # steps, 6
+    arm_right_qpos = np.array(obs['arm_right_qpos']) # steps, 6
+    gripper_left_qpos = np.array(obs['gripper_left_qpos'])
+    left_gripper_width = np.array(gripper_left_qpos).sum(axis=1)[:,None] # steps, 1
+    gripper_right_qpos = np.array(obs['gripper_right_qpos'])
+    right_gripper_width = np.array(gripper_right_qpos).sum(axis=1)[:,None] # steps, 1
+    bimanual_state = np.concatenate((arm_left_qpos, arm_right_qpos, left_gripper_width, right_gripper_width), axis=1) # steps, 14
+
+    return bimanual_state
+
+
+def process_eef_per_demo(obs):
+    """
+    process the eef states for each demo
+    """
+    eef_left_pos = np.array(obs['eef_left_pos']) # steps, 3
+    eef_right_pos = np.array(obs['eef_right_pos']) # steps, 3
+    eef_left_quat = np.array(obs['eef_left_quat']) # steps, 4
+    eef_right_quat = np.array(obs['eef_right_quat']) # steps, 4
+    eef_state = np.concatenate((eef_left_pos, eef_right_pos, eef_left_quat, eef_right_quat), axis=1) # steps, 14
+    return eef_state
+
+
+def parse_obs(obs, obs_type, with_color):
     """
     all the obs keys:
      - 'joint_qpos', 'joint_qpos_sin', 'joint_qpos_cos', 'joint_qvel', 'joint_qeffort', 'robot_pos', 'robot_ori_cos', 'robot_ori_sin', 'robot_2d_ori', 'robot_2d_ori_cos', 'robot_2d_ori_sin', 'robot_lin_vel', 'robot_ang_vel', 
@@ -552,47 +523,62 @@ def parse_obs(obs, obs_type):
 
     """
 
+    # get object keys
+    obj_key_list = []
+    for obj_key in obs.keys():
+        if 'object::' in obj_key and "floor" not in obj_key and "table" not in obj_key:
+            obj_key_list.append(obj_key)
+
+    # prepare obs keys based on obs_types
     if obs_type == "low_dim":
-        robot_prop_dict = [
+        other_keys = [
             'joint_qpos', 
+            'prop_state',
+            'base_qpos',
             'eef_left_pos', 'eef_left_quat',
             'eef_right_pos', 'eef_right_quat', 
-            'gripper_left_qpos', 'gripper_right_qpos',
-            ] # robot proprioceptive states
-        # get object keys
-        obj_key_list = []
-        for obj_key in obs.keys():
-            if 'object::' in obj_key and "floor" not in obj_key and "table" not in obj_key:
-                obj_key_list.append(obj_key)
-        obs_key_list = robot_prop_dict + obj_key_list
+            ] 
+        obs_key_list = other_keys + obj_key_list
+    
     elif obs_type == "point_cloud":
-        robot_prop_dict = [
+        other_keys = [
             'joint_qpos', 
-            'eef_left_pos', 'eef_left_quat',
-            'eef_right_pos', 'eef_right_quat', 
-            'gripper_left_qpos', 'gripper_right_qpos',
-            ] # robot proprioceptive states
-        # get object keys
-        obj_key_list = []
-        for obj_key in obs.keys():
-            if 'object::' in obj_key and "floor" not in obj_key and "table" not in obj_key:
-                obj_key_list.append(obj_key)
-        obs_key_list = robot_prop_dict + obj_key_list + ['combined::point_cloud']
+            'prop_state',
+            'prop_eef_state',
+            'prop_eef_basepose',
+            ] 
+        if with_color:
+            other_keys.append('combined::color_point_cloud')
+        else:
+            other_keys.append('combined::point_cloud')
+
+        obs_key_list = other_keys + obj_key_list
+
     elif obs_type == "rgb":
-        obs_key_list = [
-            'robot_fjtzyj::robot_fjtzyj:eyes:Camera:0::rgb',
-            'external::external_sensor0::rgb'
+        other_keys = [
+            'joint_qpos', 
+            'prop_state',
+            'prop_eef_state',
+            'prop_eef_basepose',
+            'rgb',
+            'depth'
         ]
+
+        obs_key_list = other_keys + obj_key_list
+
     else:
         raise ValueError("Invalid obs_type")
     
     return obs_key_list
 
 
-def process_robomimic_dataset(file_path, obs_type, vis_sign=False, sample_type="fps"):
-    # the original element are in the format of actions, states, obs, datagen_info, src_demo_inds, src_demo_labels, mp_end_steps, subtask_lengths
+def process_robomimic_dataset(file_path, obs_type, sample_type="fps", with_color=True, vis_sign=False):
+    # the original element are in the format of actions, states, obs, datagen_info, src_demo_inds, src_demo_labels, mp_end_steps, subtask_lengths, sensor_info
+
     # for each demostration， get the obs, next_obs, actions, rewards, dones
+
     dataset_dict = {}
+    
     # Open the file
     with h5py.File(file_path, "r") as hdf:
         # Access a group or dataset
@@ -606,7 +592,6 @@ def process_robomimic_dataset(file_path, obs_type, vis_sign=False, sample_type="
             obs_dict = {}
             next_obs_dict = {}
             num_steps = demo_data['actions'].shape[0] - 1
-            # get actions
             actions = demo_data["actions"][:-1] # actions already in range [-1, 1]
 
             # get rewards and dones
@@ -616,24 +601,52 @@ def process_robomimic_dataset(file_path, obs_type, vis_sign=False, sample_type="
             dones = np.zeros(num_steps)
             dones[-1] = 1
 
-            if vis_sign:
-                # for pcd debugging, visualized the first 100 steps in each episode
-                pcd_demo = process_pointcloud_per_demo(demo_data["obs"], vis_sign=vis_sign, sample_type=sample_type)
-                continue
+            # breakpoint()
+            # robot_name = demo_data["sensor_info"]["robot_name"]
+            # get rgbd information
+            rgb = np.array(demo_data["obs"]['robot_pvlhtm::robot_pvlhtm:eyes:Camera:0::rgb'])[:, :, :, :3]
+            depth = np.array(demo_data["obs"]['robot_pvlhtm::robot_pvlhtm:eyes:Camera:0::depth_linear'])[:, :, :, None]
+            rgbd = np.concatenate([rgb, depth], axis=-1) # (traj_length, with, height, 4)
 
-            # get observations
-            pcd_demo = process_pointcloud_per_demo_parallel(demo_data["obs"], vis_sign=vis_sign, sample_type=sample_type) # get point cloud from depth images
-            obs_key_list = parse_obs(demo_data["obs"], obs_type)
+            # get point cloud information
+            obs_key_list = parse_obs(demo_data["obs"], obs_type, with_color=with_color)
             print(demo_key, 'observation keys', obs_key_list)
 
+            # process point cloud when necessary
+            if 'combined::point_cloud' in obs_key_list or 'combined::color_point_cloud' in obs_key_list:
+                sensor_info_hdf5 = demo_data['sensor_info']
+                sensor_info = {}
+                for key in sensor_info_hdf5.keys():
+                    sensor_info[key] = np.array(sensor_info_hdf5[key]) # convert to numpy
+                if vis_sign:
+                    # for pcd debugging, visualized the first 100 steps in each episode
+                    pcd_demo = process_pointcloud_per_demo(
+                        rgbd, 
+                        vis_sign=vis_sign, 
+                        sample_type=sample_type,
+                        with_color=with_color,
+                        sensor_info=sensor_info
+                        )
+                else:
+                    # get observations
+                    pcd_demo = process_pointcloud_per_demo_parallel(
+                        rgbd, 
+                        sample_type=sample_type,
+                        with_color=with_color,
+                        sensor_info=sensor_info
+                        ) # get point cloud from rgbd images
+            
+            # process the observations
             for obs_key in obs_key_list:
-
-                # debugging_grasp_obs(demo_data) # debugging the grasp states
-                # debugging_camera_imgs(demo_data) # debugging the camera images
-
-                if obs_key == 'combined::point_cloud':
+                if "point_cloud" in obs_key:
                     obs_dict[obs_key] = pcd_demo[:-1]
                     next_obs_dict[obs_key] = pcd_demo[1:]
+                elif 'rgb' in obs_key:
+                    obs_dict[obs_key] = rgb[:-1]
+                    next_obs_dict[obs_key] = rgb[1:]
+                elif 'depth' in obs_key:
+                    obs_dict[obs_key] = depth[:-1]
+                    next_obs_dict[obs_key] = depth[1:]
                 else:
                     obs_dict[obs_key] = demo_data['obs'][obs_key][:-1]
                     next_obs_dict[obs_key] = demo_data['obs'][obs_key][1:]
@@ -791,7 +804,6 @@ if __name__ == "__main__":
         default=0.1,
         help="validation ratio, in (0, 1)"
     )
-
     # pcd number of samples
     parser.add_argument(
         "--num_pcd_samples",
@@ -799,31 +811,37 @@ if __name__ == "__main__":
         default=1024,
         help="number of samples after processing pcd"
     )
-
     parser.add_argument(
         "--vis_sign",
         action="store_true",
         help="whether visualize the pcd when processing"
     )
-
     parser.add_argument(
         "--fps",
         action="store_true",
         help="use farthest point sampling to sample the point cloud"
     )
-
     parser.add_argument(
         "--random",
         action="store_true",
         help="use random sampling to sample the point cloud"
     )
-
-
     parser.add_argument(
         "--debug",
         action="store_true",
         help="debug mode: only save the first 50 steps of each demo"
     )
+    parser.add_argument(
+        "--with_color",
+        action="store_true",
+        help="debug mode: only save the first 50 steps of each demo"
+    )
+    parser.add_argument(
+        "--process_subtasks",
+        action="store_true",
+        help="process the subtaks"
+    )
+
 
     args = parser.parse_args()
 
@@ -841,42 +859,52 @@ if __name__ == "__main__":
     # first split the train and val data
     split_train_val_from_hdf5(file_path, val_ratio=args.split_ratio)
     
-    assert args.fps != args.random, "Only one of fps and random can be True"
-    if args.fps: sample_type = "fps"
-    if args.random: sample_type = "random"
+    sample_type='default'
+    if args.obs_type == "point_cloud":
+        assert args.fps != args.random, "Only one of fps and random can be True"
+        if args.fps: sample_type = "fps"
+        if args.random: sample_type = "random"
 
     # change to robomimic dataset format
     robomimic_dataset = process_robomimic_dataset(
         file_path=file_path,
         obs_type=args.obs_type,
-        vis_sign=args.vis_sign,
-        sample_type=sample_type
+        sample_type=sample_type,
+        with_color=args.with_color,
+        vis_sign=args.vis_sign
     )
-    if args.vis_sign:
-        sys.exit()
-
-    output_path = output_path.replace(".hdf5", "_{}_{}.hdf5".format(sample_type, args.num_pcd_samples))
-
+    # if args.vis_sign:
+    #     sys.exit()
+    
+    # change the processed file name accordingly
+    if args.obs_type == "point_cloud":
+        output_path = output_path.replace(".hdf5", "_{}_{}.hdf5".format(sample_type, args.num_pcd_samples))
+        if args.with_color:
+            output_path = output_path.replace(".hdf5", "_color.hdf5")
     if args.debug:
         output_path = output_path.replace(".hdf5", "_debug.hdf5")
-    
+    if args.obs_type == "rgb":
+        output_path = output_path.replace(".hdf5", "_rgb.hdf5")
 
-    print("")
-    print('Writing the data to', output_path, '....')
-    
-    # write to hdf5
-    write_to_hdf5(robomimic_dataset, file_path, output_path)
+    # # Create output directory by removing filename.hdf5 from path
+    # output_dir = os.path.dirname(output_path)
+    # os.makedirs(output_dir, exist_ok=True)
 
-    print("")
-    print('Finished writing the data.')
+    # print("")
+    # print('Writing the data to', output_path, '....')
+    # # write to hdf5
+    # write_to_hdf5(robomimic_dataset, file_path, output_path)
+    # print("")
+    # print('Finished writing the data.')
 
-    print("")
-    print('Start processing subtasks', output_path, '....')
+    # if args.process_subtasks:
+    #     print("")
+    #     print('Start processing subtasks', output_path, '....')
 
-    # start processing subtasks
-    subtask_data_dict, num_subtasks = process_subtask_dataset(file_path, output_path)
+    #     # start processing subtasks
+    #     subtask_data_dict, num_subtasks = process_subtask_dataset(file_path, output_path)
 
-    for i in range(num_subtasks):
-        subtask_key = "subtask_" + str(i)
-        subtask_output_path = output_path.replace(".hdf5", "_subtask_{}.hdf5".format(subtask_key))
-        write_to_hdf5(subtask_data_dict[subtask_key], file_path, subtask_output_path)
+    #     for i in range(num_subtasks):
+    #         subtask_key = "subtask_" + str(i)
+    #         subtask_output_path = output_path.replace(".hdf5", "_subtask_{}.hdf5".format(subtask_key))
+    #         write_to_hdf5(subtask_data_dict[subtask_key], file_path, subtask_output_path)

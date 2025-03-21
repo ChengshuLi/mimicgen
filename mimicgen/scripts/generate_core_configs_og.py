@@ -169,7 +169,7 @@ def make_generator(config_file, settings):
         guarantee=GUARANTEE,
         num_traj=NUM_TRAJ,
         num_src_demos=10,
-        max_num_failures=25,
+        max_num_failures=None,
         num_demo_to_render=10,
         num_fail_demo_to_render=25,
         render_video=False,

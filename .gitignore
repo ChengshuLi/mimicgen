@@ -144,3 +144,4 @@ dmypy.json
 debug_videos/
 *pickle
 scene_0.json
+temp_datasets/

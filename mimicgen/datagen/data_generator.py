@@ -447,65 +447,15 @@ class DataGenerator(object):
             orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
         ) # viewer position
 
-        # TODO: need to change the sensor resolution based on requirement
-        sensor = env.env._external_sensors['external_sensor0']
-
-        # sensor config option 1: facing robot
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        #     )
-        
-        # sensor config option 2: camera zoomed in facing the robot
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 1.0693, -0.0211,  0.9937]),
-        #     orientation=th.tensor([0.2479, 0.2451, 0.6590, 0.6665]),
-            # )
-        sensor.set_position_orientation(
-            position=th.tensor([ 1.0304, -0.0309,  1.0272]),
-            orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
-        )
-
-        # sensor config option 3: camera zoomed in
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 0.1300, -0.0262,  0.8532]),
-        #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
-            # )
-
-        sensor.image_height = 180
-        sensor.image_width = 320
-
-        # sensor.image_height = 1080
-        # sensor.image_width = 1920
-                
-        sensor._add_modality_to_backend(modality='depth_linear')
-        sensor._modalities = {"depth_linear", "rgb"}
-
+        sensor_info = env.sensor_setup()
         for _ in range(5): og.sim.render()
+        # breakpoint()
 
         # print(sensor.intrinsic_matrix)
         # print(sensor.get_position_orientation())
 
-        # TODO: need to change the agent sensor correspondingly
-
-        external_sensor_info = {
-            "pose": sensor.get_position_orientation(),
-            "intrinsic_matrix": sensor.intrinsic_matrix,
-            "image_height": sensor.image_height,
-            "image_width": sensor.image_width,
-        }
-
         # parse MP_end_step from the configuration file
         end_step_of_MP_local = self.parse_MP_end_step_local()
-
-        # after changing the phase structure, 
-        # self.src_subtask_indices
-        # [
-        # [array([[[  0, 300],
-        # [300, 650]]]), array([[[  0, 350],
-        # [350, 650]]])], 
-        # [array([[[650, 992]]]), array([[[650, 992]]])]
-        # ]
 
         # sample new subtask boundaries
         all_subtask_inds_structure = []
@@ -545,8 +495,9 @@ class DataGenerator(object):
             # Don't execute rest of the phases if any of the previous phases failed (mostly due to failure in MP)
             if not env.valid_env:
                 break 
-            # if phase_ind > 0:
-            #     break
+            # remove later
+            if phase_ind > 1:
+                break
             cur_phase_task_spec = self.task_spec[phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
@@ -804,7 +755,7 @@ class DataGenerator(object):
             src_demo_labels=generated_src_demo_labels,
             mp_end_steps=generated_demo_mp_end_steps,
             subtask_lengths=generated_demo_subtask_lengths,
-            external_sensor_info=external_sensor_info,
+            sensor_info=sensor_info,
         )
         # import pdb; pdb.set_trace()
         # print('before returning the results')

@@ -437,8 +437,7 @@ class WaypointTrajectory(object):
                 if attached_obj["right"] is not None:
                     mp_action[robot.gripper_action_idx["right"]] = -1
                 state = env.get_state()["states"]
-                obs = env.get_observation()
-                # obs = env.get_obs_IL()
+                obs = env.get_obs_IL()
                 datagen_info = env_interface.get_datagen_info(action=mp_action)
                 env.step(mp_action, video_writer)
                 local_env_step += 1
@@ -671,8 +670,7 @@ class WaypointTrajectory(object):
             for i, mp_action in enumerate(mp_actions):
                 for _ in range(num_repeat):
                     state = env.get_state()["states"]
-                    obs = env.get_observation()
-                    # obs = env.get_obs_IL()
+                    obs = env.get_obs_IL()
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action, video_writer)
                     env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
@@ -705,7 +703,6 @@ class WaypointTrajectory(object):
             #         if right_gripper_action is not None:
             #             action[env_interface.gripper_action_dim[1]] = right_gripper_action[1]
             #         state = env.get_state()["states"]
-            #         obs = env.get_observation()
             #         # obs = env.get_obs_IL()
             #         datagen_info = env_interface.get_datagen_info(action=action)
             #         env.step(action)
@@ -781,8 +778,7 @@ class WaypointTrajectory(object):
             #     env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
 
             state = env.get_state()["states"]
-            obs = env.get_observation()
-            # obs = env.get_obs_IL()
+            obs = env.get_obs_IL()
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action, video_writer)
             left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
