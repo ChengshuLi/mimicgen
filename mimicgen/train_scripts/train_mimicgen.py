@@ -322,8 +322,6 @@ def train(config, mg_config, device, load_checkpoint_path=None, start_epoch_idx=
         print("\n============= Validation Dataset =============")
         print(validset)
         print("")
-
-    trainset[0]
     
     # maybe retreve statistics for normalizing observations
     obs_normalization_stats = None

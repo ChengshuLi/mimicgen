@@ -1,11 +1,22 @@
 # MimicGen
 
 ### commands
-1. python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_single_arm_cup_task_D1.json --auto-remove-exp --num_demos 2 --bimanual --seed 1 --video_path tiago_single_arm_cup
+1. python mimicgen/scripts/generate_dataset.py --config /tmp/core_configs_og/demo_src_test_tiago_single_arm_cup_task_D1.json --auto-remove-exp --num_demos 200 --bimanual --seed 2 --video_path tiago_single_arm_cup
 
-2. python mimicgen/train_scripts/train_prep_data.py --file_path /tmp/core_datasets_og/test_tiago_single_arm_cup/demo_src_test_tiago_single_arm_cup_task_D1/demo_failed.hdf5 --output_path datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_D1_ds.hdf5 --split_ratio 0.5 --num_pcd_samples 4096 --fps --vis_sign --with_color
+remove the split ratio in case you don't want anything in the validation set
+2. python mimicgen/train_scripts/train_prep_data.py --file_path /tmp/core_datasets_og/test_tiago_single_arm_cup/demo_src_test_tiago_single_arm_cup_task_D1/demo_failed.hdf5 --output_path datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_D1_ds.hdf5 --split_ratio 0.0 --num_pcd_samples 4096 --fps --vis_sign --with_color
 
 3. python mimicgen/train_scripts/train_mimicgen.py --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_cup_task_D1.json --config mimicgen/train_scripts/train_configs/tiago_D1_jpos_colorPCD_lr0001_b128_ds.json
+
+4. python mimicgen/train_scripts/eval_mimicgen.py --config logs/test_tiago_single_arm_cup_pick/20250321174054/config.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_single_arm_cup_task_D1.json --load_checkpoint_folder logs/test_tiago_single_arm_cup_pick/20250321174054 --eval_start_epoch 50 --single_epoch 1800 --eval_on_train_init_states
+
+
+
+### For installation:
+1. mimicgen installation on its homepage
+2. robomimic on the b1k-mimicgen branch
+3. robosuite on its latest branch
+4. omnigibson on its b1k-mimicgen branch  
 
 <p align="center">
   <img width="95.0%" src="docs/images/mimicgen.gif">

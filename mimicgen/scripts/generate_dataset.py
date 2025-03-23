@@ -423,7 +423,7 @@ def generate_dataset(
 
         # check if generated trajectory was successful
         # success = bool(generated_traj["success"])
-        success = env.is_success()
+        success = env.is_success()["task"]
 
         if success:
             num_success += 1

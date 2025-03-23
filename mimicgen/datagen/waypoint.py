@@ -6,6 +6,7 @@
 A collection of classes used to represent waypoints and trajectories.
 """
 import json
+import time
 import numpy as np
 from copy import deepcopy
 
@@ -399,6 +400,7 @@ class WaypointTrajectory(object):
         robot = env.env.robots[0]
 
         if phase_type == "navigation":
+            nav_curobo_mp_start_time = time.time()
             obj = env.env.scene.object_registry("name", object_ref["arm_left"])
             seq = self.waypoint_sequences[0]
             left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
@@ -428,7 +430,10 @@ class WaypointTrajectory(object):
             datagen_infos = []
             success = {"task": False}
             # success = {k: False for k in env.is_success()} # success metrics
-            for mp_action in action_generator:
+            for temp_idx, mp_action in enumerate(action_generator):
+                if temp_idx == 0:
+                    print("Time taken for nav curobo MP: {:.2f} seconds".format(time.time() - nav_curobo_mp_start_time))
+                    nav_execution_start_time = time.time()
                 mp_action = mp_action.cpu().numpy()
                 # NOTE: For the MultiFinger gripper controler in binary mode that we use for tiago, we need to ensure that the
                 # gripper actions are correctly set based on whether an object is grasped by that gripper or not 
@@ -465,6 +470,7 @@ class WaypointTrajectory(object):
             )
             # print('mp_end_steps', results['mp_end_steps'])
             # print('subtask_lengths', results['subtask_lengths'])
+            print("Time taken for nav execution: {:.2f} seconds".format(time.time() - nav_execution_start_time))
             return results
 
         # write_video = (video_writer is not None)
@@ -489,10 +495,10 @@ class WaypointTrajectory(object):
         right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
         right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
 
-        print("left_mp_waypoints", len(left_mp_waypoints))
-        print("left_replay_waypoints", len(left_replay_waypoints))
-        print("right_mp_waypoints", len(right_mp_waypoints))
-        print("right_replay_waypoints", len(right_replay_waypoints))
+        # print("left_mp_waypoints", len(left_mp_waypoints))
+        # print("left_replay_waypoints", len(left_replay_waypoints))
+        # print("right_mp_waypoints", len(right_mp_waypoints))
+        # print("right_replay_waypoints", len(right_replay_waypoints))
 
         # Get the last waypoint for padding later
         last_waypoint = seq[-1]
@@ -502,7 +508,7 @@ class WaypointTrajectory(object):
         # TODO: potentially make waypoints more dense
 
         # Temporary: This is just to capture the first image after navigating to the teacup, just for visualization
-        if object_ref["arm_left"] == "teacup":
+        if object_ref["arm_left"] == "teacup" and grasp_init_views_video_writer is not None:
             robot_name = env.env.robots[0].name
             obs = env.get_observation()
             ego_img = obs[f"{robot_name}::{robot_name}:eyes:Camera:0::rgb"]
@@ -572,6 +578,9 @@ class WaypointTrajectory(object):
                         attached_obj_scale[robot.eef_link_names[arm]] = 0.9
                 attached_obj = attached_obj_new
 
+            print("ARM MP START")
+            arm_curobo_mp_start_time = time.time()
+            
             # Generate collision-free trajectories to the sampled eef poses (including self-collisions)
             successes, traj_paths = env.cmg.compute_trajectories(
                 target_pos=target_pos,
@@ -588,6 +597,10 @@ class WaypointTrajectory(object):
                 attached_obj_scale=attached_obj_scale,
                 emb_sel=emb_sel,
             )
+        
+            print("Time taken for arm curobo MP: {:.2f} seconds".format(time.time() - arm_curobo_mp_start_time))
+            arm_mp_execution_start_time = time.time()
+
             # TODO: These lines are for debugging purposes.
             # successes, traj_paths = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=False, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
             # full_result = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=True, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
@@ -732,6 +745,8 @@ class WaypointTrajectory(object):
 
         MP_end_step_local_list = [left_MP_end_step_local, right_MP_end_step_local]
 
+        print("Time taken for arm MP execution: {:.2f} seconds".format(time.time() - arm_mp_execution_start_time))
+
         # Now we move on to the replay phase
         # We need to pad the waypoints for the left and right hands to match the length of the longest trajectory
         if len(left_replay_waypoints) < len(right_replay_waypoints):
@@ -743,6 +758,8 @@ class WaypointTrajectory(object):
 
         assert len(left_replay_waypoints) == len(right_replay_waypoints)
         # print('length of replay actions:', len(left_replay_waypoints))
+        print("ARM REPLAY START")
+        arm_replay_start_time = time.time()
         # breakpoint()
         
         # Temporary fix for only moving the left arm (for single arm tasks) during replay
@@ -778,6 +795,7 @@ class WaypointTrajectory(object):
             #     env.eef_goal_marker_right.set_position_orientation(position=pose[4:7, 3], orientation=T.mat2quat(th.tensor(pose[4:7, 0:3])))
 
             state = env.get_state()["states"]
+            temp_start_time = time.time()
             obs = env.get_obs_IL()
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action, video_writer)
@@ -796,6 +814,8 @@ class WaypointTrajectory(object):
             # cur_success_metrics = env.is_success()
             # for k in success:
             #     success[k] = success[k] or cur_success_metrics[k]
+
+        print("Time taken for arm replay: {:.2f} seconds".format(time.time() - arm_replay_start_time))
 
         # import pdb; pdb.set_trace()
 

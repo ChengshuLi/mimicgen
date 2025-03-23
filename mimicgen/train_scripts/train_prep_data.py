@@ -427,6 +427,7 @@ def process_pointcloud_per_demo(rgbd, vis_sign=True, sample_type="fps", with_col
             with_color=with_color
             )
         pcd_demo.append(pcd)
+        # breakpoint()
 
         if vis_sign:
             # print('step', step, 'number of points', pcd.shape[0])
@@ -886,25 +887,25 @@ if __name__ == "__main__":
     if args.obs_type == "rgb":
         output_path = output_path.replace(".hdf5", "_rgb.hdf5")
 
-    # # Create output directory by removing filename.hdf5 from path
-    # output_dir = os.path.dirname(output_path)
-    # os.makedirs(output_dir, exist_ok=True)
+    # Create output directory by removing filename.hdf5 from path
+    output_dir = os.path.dirname(output_path)
+    os.makedirs(output_dir, exist_ok=True)
 
-    # print("")
-    # print('Writing the data to', output_path, '....')
-    # # write to hdf5
-    # write_to_hdf5(robomimic_dataset, file_path, output_path)
-    # print("")
-    # print('Finished writing the data.')
+    print("")
+    print('Writing the data to', output_path, '....')
+    # write to hdf5
+    write_to_hdf5(robomimic_dataset, file_path, output_path)
+    print("")
+    print('Finished writing the data.')
 
-    # if args.process_subtasks:
-    #     print("")
-    #     print('Start processing subtasks', output_path, '....')
+    if args.process_subtasks:
+        print("")
+        print('Start processing subtasks', output_path, '....')
 
-    #     # start processing subtasks
-    #     subtask_data_dict, num_subtasks = process_subtask_dataset(file_path, output_path)
+        # start processing subtasks
+        subtask_data_dict, num_subtasks = process_subtask_dataset(file_path, output_path)
 
-    #     for i in range(num_subtasks):
-    #         subtask_key = "subtask_" + str(i)
-    #         subtask_output_path = output_path.replace(".hdf5", "_subtask_{}.hdf5".format(subtask_key))
-    #         write_to_hdf5(subtask_data_dict[subtask_key], file_path, subtask_output_path)
+        for i in range(num_subtasks):
+            subtask_key = "subtask_" + str(i)
+            subtask_output_path = output_path.replace(".hdf5", "_subtask_{}.hdf5".format(subtask_key))
+            write_to_hdf5(subtask_data_dict[subtask_key], file_path, subtask_output_path)

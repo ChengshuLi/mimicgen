@@ -333,7 +333,7 @@ class DataGenerator(object):
                         end_step = self.src_dataset_infos[0].eef_pose.shape[0]
 
                     end_step_of_MP[-1][-1].append(end_step)
-        print('end_step_of_MP', end_step_of_MP)
+        # print('end_step_of_MP', end_step_of_MP)
         return end_step_of_MP
 
     def parse_annotations(self, annotations):
