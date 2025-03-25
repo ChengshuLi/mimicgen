@@ -309,6 +309,29 @@ def compute_point_cloud_from_rgbd(
     color_img = color_img[mask_clip]
     color_img = color_img / 255.0 # noramlize the color
 
+    # # Remove outliers using statistical outlier removal
+    # if len(pc) > 0:
+    #     # Convert to Open3D point cloud format
+    #     pcd = o3d.geometry.PointCloud()
+    #     pcd.points = o3d.utility.Vector3dVector(pc)
+    #     if with_color:
+    #         pcd.colors = o3d.utility.Vector3dVector(color_img)
+
+    #     # Apply statistical outlier removal
+    #     # nb_neighbors: Number of neighbors to analyze for each point
+    #     # std_ratio: Standard deviation ratio threshold 
+    #     cl, ind = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+        
+    #     # Get filtered points and colors
+    #     pc = np.asarray(cl.points)
+    #     if with_color:
+    #         color_img = np.asarray(cl.colors)
+    #         color_pcd = np.concatenate([color_img, pc], axis=-1)
+
+    # print('number points after statistical outlier removal', pc.shape)
+    # if pc.shape[0] < num_points_to_sample:
+    #     breakpoint()
+    
     # downsample the pcd
     pcd_downsample_start_time = time.time()
     if sample_type == 'fps':
@@ -585,7 +608,9 @@ def process_robomimic_dataset(file_path, obs_type, sample_type="fps", with_color
         # Access a group or dataset
         group = hdf["data"]
         # process data for each demo
-        for demo_key in group.keys():
+        for j, demo_key in enumerate(group.keys()):
+            # if j < 1:
+            #     continue
             demo_data = group[demo_key]
             print("")
             print('Start processing', demo_key) 
@@ -594,6 +619,12 @@ def process_robomimic_dataset(file_path, obs_type, sample_type="fps", with_color
             next_obs_dict = {}
             num_steps = demo_data['actions'].shape[0] - 1
             actions = demo_data["actions"][:-1] # actions already in range [-1, 1]
+
+            # Temporary. Keeping only manipulation segments 
+            # breakpoint()
+            pick_segment_start = np.array(demo_data["subtask_lengths"])[0]
+            actions = actions[pick_segment_start:]
+            num_steps = actions.shape[0]
 
             # get rewards and dones
             # assume the data are expert demonstrations and only the last step is the success step
@@ -609,6 +640,9 @@ def process_robomimic_dataset(file_path, obs_type, sample_type="fps", with_color
             depth = np.array(demo_data["obs"]['robot_pvlhtm::robot_pvlhtm:eyes:Camera:0::depth_linear'])[:, :, :, None]
             rgbd = np.concatenate([rgb, depth], axis=-1) # (traj_length, with, height, 4)
 
+            # Temporary. Keeping only manipulation segments 
+            rgbd = rgbd[pick_segment_start:]
+
             # get point cloud information
             obs_key_list = parse_obs(demo_data["obs"], obs_type, with_color=with_color)
             print(demo_key, 'observation keys', obs_key_list)
@@ -619,6 +653,12 @@ def process_robomimic_dataset(file_path, obs_type, sample_type="fps", with_color
                 sensor_info = {}
                 for key in sensor_info_hdf5.keys():
                     sensor_info[key] = np.array(sensor_info_hdf5[key]) # convert to numpy
+                
+                # Temporary. Trying to remove floor points
+                sensor_info['pcd_offset'] = np.array([0.0, 0.0, -1.5])
+                sensor_info['clip_bbox_size'] = np.array([10, 0.5, 10])
+                # sensor_info['number_points_to_sample'] = 512
+
                 if vis_sign:
                     # for pcd debugging, visualized the first 100 steps in each episode
                     pcd_demo = process_pointcloud_per_demo(
@@ -649,11 +689,15 @@ def process_robomimic_dataset(file_path, obs_type, sample_type="fps", with_color
                     obs_dict[obs_key] = depth[:-1]
                     next_obs_dict[obs_key] = depth[1:]
                 else:
-                    obs_dict[obs_key] = demo_data['obs'][obs_key][:-1]
-                    next_obs_dict[obs_key] = demo_data['obs'][obs_key][1:]
+                    # # Temporary. Keeping only manipulation segments 
+                    # obs_dict[obs_key] = demo_data['obs'][obs_key][:-1]
+                    # next_obs_dict[obs_key] = demo_data['obs'][obs_key][1:]
+                    obs_dict[obs_key] = demo_data['obs'][obs_key][pick_segment_start:-1]
+                    next_obs_dict[obs_key] = demo_data['obs'][obs_key][pick_segment_start+1:]
 
                 assert obs_dict[obs_key].shape[0] == next_obs_dict[obs_key].shape[0] == num_steps
 
+            # breakpoint()
             demo_dict = {
                 "obs": obs_dict,
                 "next_obs": next_obs_dict,
@@ -877,15 +921,15 @@ if __name__ == "__main__":
     # if args.vis_sign:
     #     sys.exit()
     
-    # change the processed file name accordingly
-    if args.obs_type == "point_cloud":
-        output_path = output_path.replace(".hdf5", "_{}_{}.hdf5".format(sample_type, args.num_pcd_samples))
-        if args.with_color:
-            output_path = output_path.replace(".hdf5", "_color.hdf5")
-    if args.debug:
-        output_path = output_path.replace(".hdf5", "_debug.hdf5")
-    if args.obs_type == "rgb":
-        output_path = output_path.replace(".hdf5", "_rgb.hdf5")
+    # # change the processed file name accordingly
+    # if args.obs_type == "point_cloud":
+    #     output_path = output_path.replace(".hdf5", "_{}_{}.hdf5".format(sample_type, args.num_pcd_samples))
+    #     if args.with_color:
+    #         output_path = output_path.replace(".hdf5", "_color.hdf5")
+    # if args.debug:
+    #     output_path = output_path.replace(".hdf5", "_debug.hdf5")
+    # if args.obs_type == "rgb":
+    #     output_path = output_path.replace(".hdf5", "_rgb.hdf5")
 
     # Create output directory by removing filename.hdf5 from path
     output_dir = os.path.dirname(output_path)

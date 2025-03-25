@@ -1,8 +1,9 @@
 import h5py
+import numpy as np
 
 f = h5py.File("/tmp/core_datasets_og/test_tiago_single_arm_cup/demo_src_test_tiago_single_arm_cup_task_D1/demo_failed.hdf5", "r")
 f2 = h5py.File("/home/arpit/test_projects/mimicgen/temp_datasets/demo_failed.hdf5", "r")
-f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_D1_ds_fps_4096_color.hdf5", "r")
+f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_floor_filtering_fps_4096_color.hdf5", "r")
 f4 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/test_tiago_single_arm_cup.hdf5", "r")
 
 breakpoint()

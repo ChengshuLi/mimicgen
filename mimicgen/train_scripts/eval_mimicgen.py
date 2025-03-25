@@ -19,7 +19,11 @@ Args:
 
 import argparse
 import json
+import h5py
 import numpy as np
+np.set_printoptions(precision=3, suppress=True)
+import torch as th
+th.set_printoptions(sci_mode=False, precision=3)
 import time
 import datetime
 import os
@@ -30,7 +34,6 @@ import socket
 import traceback
 import random
 import imageio
-import numpy as np
 from copy import deepcopy
 
 from collections import OrderedDict
@@ -38,6 +41,7 @@ import sys
 from io import StringIO
 
 import torch
+torch.set_printoptions(sci_mode=False, precision=3)
 from torch.utils.data import DataLoader
 
 import robomimic
@@ -89,7 +93,6 @@ def sensor_customize_test_tiago_cup(env):
     print("")
 
     # change the density of the objects
-    import omnigibson as og
     state = og.sim.dump_state()
     og.sim.stop()
 
@@ -108,7 +111,6 @@ def sensor_customize_test_tiago_cup(env):
     env.reset()
     for _ in range(2): og.sim.step()
 
-    import torch as th
     og.sim.viewer_camera.set_position_orientation(
         position=th.tensor([ 1.7492, -0.0424,  1.5371]),
         orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
@@ -267,25 +269,37 @@ def evaluate_w_rollout(config, mg_config, device, args):
     demo_actions = None
 
     # replay the actions from the demostration to sanity check the demo quality
-    replay_from_demo = False
+    replay_from_demo = True
+    use_controller = True
     # breakpoint()
     if replay_from_demo:
         print("\n============= Start replaying the actions from the demostration =============")
         print("")
         # get one demosntration to help debug the model
         trainset, validset = TrainUtils.load_data_for_training(config, obs_keys=shape_meta["all_obs_keys"])
-        demo_name = trainset.demos[0]
-        demo_actions = trainset.get_action_traj(demo_name)['actions']
+        file_path = "/home/arpit/test_projects/mimicgen/temp_datasets/demo_failed.hdf5"
+        generated_demo_f = h5py.File(file_path, "r")
+        for i in range(20):
+            demo_name = trainset.demos[i]
+            demo_actions = trainset.get_action_traj(demo_name)['actions']
 
-        env.reset()
-        for step in range(demo_actions.shape[0]):
-            ob_dict, r, done, truncated, _ = env.step(demo_actions[step])
-            print("step: {}, reward: {}, done: {}, truncated: {}".format(step, r, done, truncated))
-            if done:
-                break
-        
-        print('finished policy rollout one episode')
-        breakpoint()
+            init_state = {"states": generated_demo_f["data/demo_{}".format(i)]["states"][0]} 
+            env.reset_to(state=init_state)
+            breakpoint()
+
+            for step in range(demo_actions.shape[0]):
+                print("step: ", step)
+                if use_controller:
+                    ob_dict, r, done, truncated, _ = env.step(demo_actions[step])
+                    print("step: {}, reward: {}, done: {}, truncated: {}".format(step, r, done, truncated))
+                    if done:
+                        break
+                else:
+                    q = robot.action_to_q(demo_actions[step])
+                    env.env.env.robots[0].set_joint_positions(q)
+                    for _ in range(2): og.sim.step()
+            
+            print('finished policy rollout one episode')
         # exit the python code
         sys.exit()
 
@@ -474,7 +488,6 @@ def evaluate_w_rollout(config, mg_config, device, args):
     
     
     if env_meta["type"] == EnvUtils.EB.EnvType.OG_TYPE:
-        import omnigibson as og
         og.shutdown()
 
     return None

@@ -8,7 +8,7 @@ remove the split ratio in case you don't want anything in the validation set
 
 3. python mimicgen/train_scripts/train_mimicgen.py --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_cup_task_D1.json --config mimicgen/train_scripts/train_configs/tiago_D1_jpos_colorPCD_lr0001_b128_ds.json
 
-4. python mimicgen/train_scripts/eval_mimicgen.py --config logs/test_tiago_single_arm_cup_pick/20250321174054/config.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_single_arm_cup_task_D1.json --load_checkpoint_folder logs/test_tiago_single_arm_cup_pick/20250321174054 --eval_start_epoch 50 --single_epoch 1800 --eval_on_train_init_states
+4. python mimicgen/train_scripts/eval_mimicgen.py --config logs/test_tiago_single_arm_cup_pick/20250322184759/config.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_single_arm_cup_task_D1.json --load_checkpoint_folder logs/test_tiago_single_arm_cup_pick/20250322184759 --eval_start_epoch 50 --single_epoch 1650 --eval_on_train_init_states
 
 
 
