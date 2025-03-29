@@ -27,7 +27,7 @@ def hori_concatenate_image(images):
         # Concatenate the images side by side
         concatenated_image = np.concatenate((concatenated_image, image_i), axis=1)
 
-    return concatenated_image
+    return np.array(concatenated_image)
 
 def add_red_border_to_frame(frame, ratio=0.02):
     """

@@ -19,6 +19,7 @@ import omnigibson.utils.transform_utils as T
 from omnigibson.action_primitives.curobo import CuRoboEmbodimentSelection
 import torch as th
 from mimicgen.utils.misc_utils import hori_concatenate_image
+import omnigibson as og
 
 class Waypoint(object):
     """
@@ -418,9 +419,13 @@ class WaypointTrajectory(object):
             env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
             env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
             env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+            # breakpoint()
             # th.manual_seed(3)
             # NOTE: Temporary fix for increasing base sampling success rate by only passing left ee pose
-            action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose={"left": eef_pose["left"]})
+            if env.single_arm:
+                action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose={"left": eef_pose["left"]})
+            else:
+                action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose=eef_pose)
             # action_generator = env.primitive._navigate_to_obj(obj=obj)
             
             local_env_step = 0
@@ -434,6 +439,12 @@ class WaypointTrajectory(object):
                 if temp_idx == 0:
                     print("Time taken for nav curobo MP: {:.2f} seconds".format(time.time() - nav_curobo_mp_start_time))
                     nav_execution_start_time = time.time()
+                # This will happen if the base sampling fails or if base MP fails.
+                if mp_action is None:
+                    env.err = env.primitive.err
+                    env.valid_env = env.primitive.valid_env
+                    return None
+               
                 mp_action = mp_action.cpu().numpy()
                 # NOTE: For the MultiFinger gripper controler in binary mode that we use for tiago, we need to ensure that the
                 # gripper actions are correctly set based on whether an object is grasped by that gripper or not 
@@ -454,10 +465,6 @@ class WaypointTrajectory(object):
                 # for k in success:
                 #     success[k] = success[k] or cur_success_metrics[k]
 
-            env.valid_env = env.primitive.valid_env
-            # return here so that we can count this as a MP failure 
-            if not env.valid_env:
-                return None
             MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
             results = dict(
                 states=states,
@@ -512,9 +519,9 @@ class WaypointTrajectory(object):
             robot_name = env.env.robots[0].name
             obs = env.get_observation()
             ego_img = obs[f"{robot_name}::{robot_name}:eyes:Camera:0::rgb"]
-            eef_left_img = obs[f"{robot_name}::{robot_name}:left_eef_link:Camera:0::rgb"]
-            eef_right_img = obs[f"{robot_name}::{robot_name}:right_eef_link:Camera:0::rgb"]
-            concatenated_img = hori_concatenate_image([ego_img, eef_left_img, eef_right_img])
+            # eef_left_img = obs[f"{robot_name}::{robot_name}:left_eef_link:Camera:0::rgb"]
+            # eef_right_img = obs[f"{robot_name}::{robot_name}:right_eef_link:Camera:0::rgb"]
+            concatenated_img = hori_concatenate_image([ego_img])
             grasp_init_views_video_writer.append_data(concatenated_img)
 
         
@@ -546,7 +553,8 @@ class WaypointTrajectory(object):
             right_waypoint_pos, right_waypoint_ori = robot.get_eef_pose("right")
 
         # remove later. Setting the current right ee pose as the target to increase MP success rate
-        right_waypoint_pos, right_waypoint_ori = robot.get_eef_pose("right")
+        if env.single_arm:
+            right_waypoint_pos, right_waypoint_ori = robot.get_eef_pose("right")
 
         # If at least one hand has motion planner waypoints, plan the motion
         if len(left_mp_waypoints) > 0 or len(right_mp_waypoints) > 0:
@@ -616,6 +624,7 @@ class WaypointTrajectory(object):
             if not success_status:
                 print('Arm motion planning failed')
                 env.valid_env = False 
+                env.err = "ArmMPFailed"
                 results = None
                 return results
             assert success_status, "motion planning failed"
@@ -624,6 +633,8 @@ class WaypointTrajectory(object):
             # Convert planned joint trajectory to actions
             # TODO: need to call q_to_action after every env.step if the base is moving; we cannot pre-compute all actions
             q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
+            # If we use curobo joint space planning instead of Cartesian space planning, we need to downsample the trajectory 
+            # q_traj = q_traj[::50]
             q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
             q_traj = q_traj.cpu()
             mp_actions = []
@@ -763,13 +774,14 @@ class WaypointTrajectory(object):
         # breakpoint()
         
         # Temporary fix for only moving the left arm (for single arm tasks) during replay
-        current_right_ee_pose = robot.get_eef_pose("right")
-        current_right_ee_pos = current_right_ee_pose[0]
-        current_right_ee_quat = current_right_ee_pose[1]
-        current_right_ee_matrix = T.quat2mat(current_right_ee_quat)
-        current_right_ee_pose = th.eye(4)
-        current_right_ee_pose[:3, :3] = current_right_ee_matrix
-        current_right_ee_pose[:3, 3] = current_right_ee_pos
+        if env.single_arm:
+            current_right_ee_pose = robot.get_eef_pose("right")
+            current_right_ee_pos = current_right_ee_pose[0]
+            current_right_ee_quat = current_right_ee_pose[1]
+            current_right_ee_matrix = T.quat2mat(current_right_ee_quat)
+            current_right_ee_pose = th.eye(4)
+            current_right_ee_pose[:3, :3] = current_right_ee_matrix
+            current_right_ee_pose[:3, 3] = current_right_ee_pos
         
         # For each pair of waypoints, we extract the pose for each hand and then convert to action
         # We also overwrite the gripper actions with the ones from the waypoints
@@ -778,7 +790,8 @@ class WaypointTrajectory(object):
             pose[:4, :] = left_waypoint.pose[:4, :]
             pose[4:, :] = right_waypoint.pose[4:, :]
             # Temporary fix for only moving the left arm (for single arm tasks) during replay
-            pose[4:, :] = current_right_ee_pose
+            if env.single_arm:
+                pose[4:, :] = current_right_ee_pose
             replay_action = env_interface.target_pose_to_action(target_pose=pose)
             replay_action[env_interface.gripper_action_dim[0]] = left_waypoint.gripper_action[0]
             replay_action[env_interface.gripper_action_dim[1]] = right_waypoint.gripper_action[1]

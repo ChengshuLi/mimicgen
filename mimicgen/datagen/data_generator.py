@@ -442,10 +442,10 @@ class DataGenerator(object):
         # set camera postion
         import omnigibson as og
         import torch as th
-        og.sim.viewer_camera.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        ) # viewer position
+        # og.sim.viewer_camera.set_position_orientation(
+        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+        # ) # viewer position
 
         sensor_info = env.sensor_setup()
         for _ in range(5): og.sim.render()
@@ -534,6 +534,10 @@ class DataGenerator(object):
 
             for subtask_ind_reordered in range(num_subtasks):
                 print("========== Phase {} Subtask {} ==========".format(phase_ind, subtask_ind_reordered))
+
+                # remove later
+                if phase_ind == 1 and subtask_ind_reordered == 1:
+                    break
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]

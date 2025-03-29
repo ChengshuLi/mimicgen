@@ -237,6 +237,36 @@ def generate_dataset(
     use_image_obs = ((mg_config.obs.collect_obs and (len(mg_config.obs.camera_names) > 0)) if not write_video else False)
     use_depth_obs = False
 
+
+    # remove later
+    # breakpoint()
+    # del env_meta["env_kwargs"]["scene"]["load_object_categories"]
+    # del env_meta["env_kwargs"]["objects"][0]
+    # del env_meta["env_kwargs"]["objects"][1]
+    # del env_meta["env_kwargs"]["objects"]
+    
+    # from scipy.spatial.transform import Rotation as R
+    # rot_euler = [0.0, 0.0, 180.0]
+    # rot_quat = R.from_euler('xyz', rot_euler, degrees=True).as_quat().tolist()
+    # env_meta["env_kwargs"]["objects"][0]["category"] = "commercial_kitchen_sink"
+    # env_meta["env_kwargs"]["objects"][0]["model"] = "xecfyh"
+    # env_meta["env_kwargs"]["objects"][0]["position"] = [0.5, 0.0, 0.7]
+    # env_meta["env_kwargs"]["objects"][0]["scale"] = [1.0, 1.0, 0.5]
+    # env_meta["env_kwargs"]["objects"][0]["orientation"] = rot_quat
+
+    # rot_euler = [0.0, 0.0, -90.0]
+    # rot_quat = R.from_euler('xyz', rot_euler, degrees=True).as_quat().tolist()
+    # env_meta["env_kwargs"]["objects"][0]["category"] = "fridge"
+    # env_meta["env_kwargs"]["objects"][0]["model"] = "hivvdf"
+    # env_meta["env_kwargs"]["objects"][0]["position"] = [1.5, 0.0, 1.0]
+    # env_meta["env_kwargs"]["objects"][0]["scale"] = [1.0, 1.0, 2.0]
+    # env_meta["env_kwargs"]["objects"][0]["orientation"] = rot_quat
+
+    
+    # # move teacup and coffee cup away
+    # env_meta["env_kwargs"]["objects"][2]["position"] = [0.0, 2.5, 0.7]
+    # env_meta["env_kwargs"]["objects"][2]["position"] = [0.0, 2.0, 0.7]
+
     # TODO: why here is the robomimicutil, not omnigibsonutil?
     # simulation environment
     env = RobomimicUtils.create_env(
@@ -362,7 +392,7 @@ def generate_dataset(
         os.makedirs(f"{run_dir}/debug_videos/{video_path}", exist_ok=True) 
         grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
     
-    failed_generation_num = 0
+    base_mp_failures, arm_mp_failures, base_sampling_failures = 0, 0, 0
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
 
@@ -407,14 +437,19 @@ def generate_dataset(
         # breakpoint()
         
         if generated_traj is None:
-            failed_generation_num += 1
+            if env.err == "BaseMPFailed":
+                base_mp_failures += 1
+            elif env.err == "ArmMPFailed":
+                arm_mp_failures += 1
+            elif env.err == "BaseSamplingFailed":   
+                base_sampling_failures += 1
             success = False
             print("")
             print("*" * 50)
             print("trial {} success: {}".format(num_attempts, success))
             print("have {} successes out of {} trials so far".format(num_success, num_attempts))
             print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-            print('have {} MP failures'.format(failed_generation_num))
+            print('have {} Base MP failures, {} Arm MP failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_failures, base_sampling_failures))
             print("*" * 50)
             continue
 
@@ -473,7 +508,7 @@ def generate_dataset(
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} MP failures'.format(failed_generation_num))
+        print('have {} Base MP failures, {} Arm MP failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_failures, base_sampling_failures))
         print("*" * 50)
 
         # regularly log progress to disk every so often
