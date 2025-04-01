@@ -10,8 +10,9 @@ import math
 import collections
 import numpy as np
 
-import robosuite
-import robosuite.utils.transform_utils as T
+# import robosuite
+# import robosuite.utils.transform_utils as T
+import omnigibson.utils.transform_utils as T
 
 
 def make_pose(pos, rot):

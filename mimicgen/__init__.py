@@ -4,12 +4,12 @@
 
 __version__ = "1.0.0"
 
-# try to import all environment interfaces here
-try:
-    from mimicgen.env_interfaces.robosuite import *
-except ImportError as e:
-    print("WARNING: robosuite environment interfaces not imported...")
-    print("Got error: {}".format(e))
+# # try to import all environment interfaces here
+# try:
+#     from mimicgen.env_interfaces.robosuite import *
+# except ImportError as e:
+#     print("WARNING: robosuite environment interfaces not imported...")
+#     print("Got error: {}".format(e))
 
 try:
     from mimicgen.env_interfaces.omnigibson import *
@@ -17,25 +17,25 @@ except ImportError as e:
     print("WARNING: omnigibson environment interfaces not imported...")
     print("Got error: {}".format(e))
 
-# import tasks to make sure they are added to robosuite task registry
-try:
-    from mimicgen.envs.robosuite.threading import *
-    from mimicgen.envs.robosuite.coffee import *
-    from mimicgen.envs.robosuite.three_piece_assembly import *
-    from mimicgen.envs.robosuite.mug_cleanup import *
-    from mimicgen.envs.robosuite.stack import *
-    from mimicgen.envs.robosuite.nut_assembly import *
-    from mimicgen.envs.robosuite.pick_place import *
-except ImportError as e:
-    print("WARNING: robosuite environments not imported...")
-    print("Got error: {}".format(e))
+# # import tasks to make sure they are added to robosuite task registry
+# try:
+#     from mimicgen.envs.robosuite.threading import *
+#     from mimicgen.envs.robosuite.coffee import *
+#     from mimicgen.envs.robosuite.three_piece_assembly import *
+#     from mimicgen.envs.robosuite.mug_cleanup import *
+#     from mimicgen.envs.robosuite.stack import *
+#     from mimicgen.envs.robosuite.nut_assembly import *
+#     from mimicgen.envs.robosuite.pick_place import *
+# except ImportError as e:
+#     print("WARNING: robosuite environments not imported...")
+#     print("Got error: {}".format(e))
 
-try:
-    from mimicgen.envs.robosuite.hammer_cleanup import *
-    from mimicgen.envs.robosuite.kitchen import *
-except ImportError as e:
-    print("WARNING: robosuite task zoo environments not imported, possibly because robosuite_task_zoo is not installed...")
-    print("Got error: {}".format(e))
+# try:
+#     from mimicgen.envs.robosuite.hammer_cleanup import *
+#     from mimicgen.envs.robosuite.kitchen import *
+# except ImportError as e:
+#     print("WARNING: robosuite task zoo environments not imported, possibly because robosuite_task_zoo is not installed...")
+#     print("Got error: {}".format(e))
 
 # stores released dataset links and rollout horizons in global dictionary.
 # Structure is given below for each type of dataset:
