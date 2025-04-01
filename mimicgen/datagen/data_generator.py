@@ -441,10 +441,10 @@ class DataGenerator(object):
         # set camera postion
         import omnigibson as og
         import torch as th
-        og.sim.viewer_camera.set_position_orientation(
-            position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-            orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        ) # viewer position
+        # og.sim.viewer_camera.set_position_orientation(
+        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
+        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
+        # ) # viewer position
 
         # TODO: need to change the sensor resolution based on requirement
         sensor = env.env._external_sensors['external_sensor0']
@@ -471,11 +471,11 @@ class DataGenerator(object):
         #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
             # )
 
-        sensor.image_height = 180
-        sensor.image_width = 320
+        # sensor.image_height = 180
+        # sensor.image_width = 320
 
-        # sensor.image_height = 1080
-        # sensor.image_width = 1920
+        sensor.image_height = 1080
+        sensor.image_width = 1920
                 
         sensor._add_modality_to_backend(modality='depth_linear')
         sensor._modalities = {"depth_linear", "rgb"}
@@ -541,6 +541,12 @@ class DataGenerator(object):
 
         # for left arms first
         for phase_ind in range(self.num_phases):
+            # print("phase", phase_ind)
+            # breakpoint()
+            # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
+            phase_type = self.task_spec[phase_ind][0][0]["phase_type"]
+            if phase_type == "navigation" and phase_ind < self.num_phases - 1:
+                phase_ind += 1
             cur_phase_task_spec = self.task_spec[phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
@@ -548,6 +554,8 @@ class DataGenerator(object):
             all_subtask_inds = all_subtask_inds_structure[phase_ind]
             subtask_ind_vals = np.sort(np.unique(np.concatenate((np.unique(all_subtask_inds[0]), np.unique(all_subtask_inds[1])))))
             num_subtasks = len(subtask_ind_vals) - 1
+            if phase_type == "navigation" and phase_ind < self.num_phases - 1:
+                num_subtasks = 1
             
             # a distance based heuristic to change the role of the two arms
             # calculate the start of the replay part
@@ -752,7 +760,7 @@ class DataGenerator(object):
                     cur_subtask_end_step_MP=MP_end_steps,
                     # attached_obj=attached_obj[phase_ind][subtask_ind_reordered],
                     attached_obj=attached_obj_dict,
-                    phase_type=self.task_spec[phase_ind][0][0]["phase_type"],
+                    phase_type=phase_type,
                     object_ref=object_ref,
                 )
                 if exec_results is None:

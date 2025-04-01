@@ -352,6 +352,33 @@ class WaypointTrajectory(object):
         # concatenate the trajectories
         self.waypoint_sequences += other.waypoint_sequences
 
+    def _pad_tensors(self, tensor1, tensor2):
+        M, _ = tensor1.shape
+        N, _ = tensor2.shape
+        max_size = max(M, N)
+
+        def pad_tensor(tensor, size):
+            if tensor.shape[0] < size:
+                last_row = tensor[-1].unsqueeze(0)  # Extract last row
+                repeat_count = size - tensor.shape[0]
+                padding = last_row.repeat(repeat_count, 1)  # Repeat last row
+                tensor = th.cat([tensor, padding], dim=0)
+            return tensor
+
+        tensor1 = pad_tensor(tensor1, max_size)
+        tensor2 = pad_tensor(tensor2, max_size)
+
+        return tensor1, tensor2
+
+    def _subsample_tensor(self, tensor, num_samples=8):
+        N = tensor.shape[0]
+
+        if N <= num_samples:
+            return tensor  # If N is less than or equal to num_samples, return as is
+
+        indices = th.linspace(0, N - 1, steps=num_samples).long()  # Evenly spaced indices
+        return tensor[indices]
+
     def execute(
         self, 
         env,
@@ -391,19 +418,37 @@ class WaypointTrajectory(object):
         """
 
         print("execute")
-        breakpoint()
+        # breakpoint()
 
         robot = env.env.robots[0]
 
         if phase_type == "navigation":
             obj = env.env.scene.object_registry("name", object_ref["arm_right"])
             seq = self.waypoint_sequences[0]
+
             left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+            left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
+            left_mp_last_waypoint = left_mp_waypoints[-1]
+            left_waypoints = [left_mp_last_waypoint] + left_replay_waypoints
+
+            left_waypoint_pos = th.vstack([th.tensor(wp.pose[0:3, 3]) for wp in left_waypoints])
+            left_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[0:3, 0:3])) for wp in left_waypoints])
+
             right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
-            left_waypoint = left_mp_waypoints[-1]
-            left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
-            right_waypoint = right_mp_waypoints[-1]
-            right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
+            right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
+            right_mp_last_waypoint = right_mp_waypoints[-1]
+            right_waypoints = [right_mp_last_waypoint] + right_replay_waypoints
+
+            right_waypoint_pos = th.vstack([th.tensor(wp.pose[4:7, 3]) for wp in right_waypoints])
+            right_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[4:7, 0:3])) for wp in right_waypoints])
+
+            left_waypoint_pos, right_waypoint_pos = self._pad_tensors(left_waypoint_pos, right_waypoint_pos)
+            left_waypoint_ori, right_waypoint_ori = self._pad_tensors(left_waypoint_ori, right_waypoint_ori)
+
+            left_waypoint_pos = self._subsample_tensor(left_waypoint_pos)
+            left_waypoint_ori = self._subsample_tensor(left_waypoint_ori)
+            right_waypoint_pos = self._subsample_tensor(right_waypoint_pos)
+            right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
 
             eef_pose = {
                 "left": (left_waypoint_pos, left_waypoint_ori),
@@ -411,9 +456,9 @@ class WaypointTrajectory(object):
             }
             env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
             env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-            env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
-            env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
-            th.manual_seed(3)
+            env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos[-1], orientation=left_waypoint_ori[-1])
+            env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos[-1], orientation=right_waypoint_ori[-1])
+            # th.manual_seed(3)
             action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose=eef_pose)
             local_env_step = 0
             states = []
@@ -567,7 +612,7 @@ class WaypointTrajectory(object):
             # TODO: change the logic, if the motion planner fails, then we reply the trajectory
             if not success_status:
                 print('motion planning failed, breakpoint in waypoint.py')
-                breakpoint()
+                # breakpoint()
                 results = None
                 return results
             assert success_status, "motion planning failed"
@@ -575,9 +620,8 @@ class WaypointTrajectory(object):
             # import pdb; pdb.set_trace()
             # Convert planned joint trajectory to actions
             # TODO: need to call q_to_action after every env.step if the base is moving; we cannot pre-compute all actions
-            q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
-            q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
-            q_traj = q_traj.cpu()
+            q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel).cpu().float()
+            q_traj = env.cmg.add_linearly_interpolated_waypoints(traj=q_traj, max_inter_dist=0.01)
             mp_actions = []
             for j_pos in q_traj:
                 action = robot.q_to_action(j_pos).cpu().numpy()
@@ -628,7 +672,7 @@ class WaypointTrajectory(object):
 
             assert len(mp_actions) == len(left_eef_poses) == len(right_eef_poses)
             print('length of MP actions:', len(mp_actions))
-            breakpoint()
+            # breakpoint()
             # import pdb; pdb.set_trace()
             # For each motion planner action, we repeat it 3 times for the controllers to converge
             num_repeat = 1
@@ -678,7 +722,7 @@ class WaypointTrajectory(object):
 
         assert len(left_replay_waypoints) == len(right_replay_waypoints)
         print('length of replay actions:', len(left_replay_waypoints))
-        breakpoint()
+        # breakpoint()
         # For each pair of waypoints, we extract the pose for each hand and then convert to action
         # We also overwrite the gripper actions with the ones from the waypoints
         for left_waypoint, right_waypoint in zip(left_replay_waypoints, right_replay_waypoints):

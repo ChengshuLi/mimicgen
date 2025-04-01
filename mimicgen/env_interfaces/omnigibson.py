@@ -707,7 +707,7 @@ class MG_TestTiagoCup(OmniGibsonInterfaceBimanual):
 
 class MG_TestR1Cup(OmniGibsonInterfaceBimanual):
     """
-    Corresponds to OG test_tiago_cup task and variants.
+    Corresponds to OG test_r1_cup task and variants.
     """
     def get_object_poses(self):
         """
