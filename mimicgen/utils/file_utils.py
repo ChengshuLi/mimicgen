@@ -385,7 +385,7 @@ def write_demo_to_hdf5(
     src_demo_labels=None,
     mp_end_steps=None,
     subtask_lengths=None,
-    external_sensor_info=None,
+    sensor_info=None,
 ):
     """
     Helper function to write demonstration to an hdf5 file (robomimic format) in a folder. It will be 
@@ -452,11 +452,9 @@ def write_demo_to_hdf5(
         ep_data_grp.create_dataset("mp_end_steps", data=np.array(mp_end_steps))
     if subtask_lengths is not None:
         ep_data_grp.create_dataset("subtask_lengths", data=np.array(subtask_lengths))
-    
-    # todo: has bug in it
-    # if external_sensor_info is not None:
-    #     for k in external_sensor_info:
-    #         ep_data_grp.create_dataset("external_sensor_info/{}".format(k), data=np.array(external_sensor_info[k]))
+    if sensor_info is not None:
+        for k2 in sensor_info:            
+            ep_data_grp.create_dataset("sensor_info/{}".format(k2), data=np.array(sensor_info[k2]))
 
     # episode metadata
     if ("model" in initial_state) and (initial_state["model"] is not None):
@@ -483,21 +481,33 @@ def merge_all_hdf5(
     """
     source_hdf5s = glob(os.path.join(folder, "*.hdf5"))
 
-    print(source_hdf5s)
+    # print(source_hdf5s)
+    print('len source hdf5s', len(source_hdf5s))
+
 
     # get all timestamps and sort files from lowest to highest
     timestamps = []
     filtered_source_hdf5s = []
+    index = 0
     for source_hdf5_path in source_hdf5s:
+        index += 1
+        print('index', index)
         try:
             f = h5py.File(source_hdf5_path, "r")
         except Exception as e:
             print("WARNING: problem with file {}".format(source_hdf5_path))
             print("Exception: {}".format(e))
             continue
+        try:
+            # check if timestamp in file
+            timestamps.append(f["data"].attrs["timestamp"])
+            f.close()
+        except Exception as e:
+            print("WARNING: file {} does not have timestamp attribute".format(source_hdf5_path))
+            # breakpoint()
+            continue
         filtered_source_hdf5s.append(source_hdf5_path)
-        timestamps.append(f["data"].attrs["timestamp"])
-        f.close()
+        print("len filtered out one", len(filtered_source_hdf5s))
 
     assert len(timestamps) == len(filtered_source_hdf5s)
     inds = np.argsort(timestamps)

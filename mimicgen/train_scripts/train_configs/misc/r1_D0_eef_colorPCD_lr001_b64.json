@@ -1,0 +1,158 @@
+{
+    "algo_name": "diffusion_policy",
+    "experiment": {
+        "name": "test_r1_cup",
+        "validate": false,
+        "logging": {
+            "terminal_output_to_txt": true,
+            "log_tb": false,
+            "log_wandb": true,
+            "wandb_proj_name": "tiago_cup"
+        },
+        "save": {
+            "enabled": true,
+            "every_n_seconds": null,
+            "every_n_epochs": 50,
+            "epochs": [],
+            "on_best_validation": false,
+            "on_best_rollout_return": false,
+            "on_best_rollout_success_rate": true
+        },
+        "epoch_every_n_steps": 100,
+        "validation_epoch_every_n_steps": 10,
+        "env": null,
+        "additional_envs": null,
+        "render": false,
+        "render_video": true,
+        "keep_all_videos": true,
+        "video_skip": 5,
+        "rollout": {
+            "enabled": false,
+            "n": 2,
+            "horizon": 2200,
+            "rate": 100,
+            "warmstart": 0,
+            "terminate_on_success": true
+        }
+    },
+    "train": {
+        "data": "./datasets/generated_data/test_r1_cup/robomimic_dataset_D0_fps_4096_color_clipped.hdf5",
+        "output_dir": "./logs",
+        "num_data_workers": 2,
+        "hdf5_cache_mode": "low_dim",
+        "hdf5_use_swmr": true,
+        "hdf5_load_next_obs": false,
+        "hdf5_normalize_obs": true,
+        "hdf5_filter_key": "train",
+        "hdf5_validation_filter_key": null,
+        "seq_length": 20,
+        "pad_seq_length": true,
+        "frame_stack": 3,
+        "pad_frame_stack": true,
+        "dataset_keys": [
+            "actions"
+        ],
+        "action_keys": [
+            "actions"
+        ],
+        "action_config": {
+            "actions": {
+                "normalization": "min_max",
+                "rot_conversion": null
+            }
+        },
+        "goal_mode": null,
+        "cuda": true,
+        "batch_size": 64,
+        "num_epochs": 3000,
+        "seed": 1
+    },
+    "algo": {
+        "optim_params": {
+            "policy": {
+                "learning_rate": {
+                    "initial": 0.001,
+                    "decay_factor": 0.01,
+                    "epoch_schedule": []
+                },
+                "regularization": {
+                    "L2": 0.0
+                }
+            }
+        },
+        "horizon": {
+            "observation_horizon": 3,
+            "action_horizon": 10,
+            "prediction_horizon": 20
+        },
+        "unet": {
+            "enabled": true,
+            "diffusion_step_embed_dim": 256,
+            "down_dims": [256,512,1024],
+            "kernel_size": 5,
+            "n_groups": 8
+        },
+        "ema": {
+            "enabled": false,
+            "power": 0.75
+        },
+        "ddpm": {
+            "enabled": false,
+            "num_train_timesteps": 100,
+            "num_inference_timesteps": 100,
+            "beta_schedule": "squaredcos_cap_v2",
+            "clip_sample": true,
+            "prediction_type": "epsilon"
+        },
+        "ddim": {
+            "enabled": true,
+            "num_train_timesteps": 100,
+            "num_inference_timesteps": 10,
+            "beta_schedule": "squaredcos_cap_v2",
+            "clip_sample": true,
+            "set_alpha_to_one": true,
+            "steps_offset": 0,
+            "prediction_type": "epsilon"
+        }
+    },
+    "observation": {
+        "modalities": {
+            "obs": {
+                "low_dim": [
+                    "eef_state"
+                    ],
+                "point_cloud": [
+                    "combined::color_point_cloud"
+                ]
+            },
+            "goal": {
+                "low_dim": [],
+                "rgb": [],
+                "depth": [],
+                "scan": []
+            }
+        },
+        "encoder": {
+            "point_cloud":{
+                "core_class": "PointNet",
+                "core_kwargs":{
+                    "input_dim": 6,
+                    "output_dim": 256,
+                    "layer_dims": [256,512,1024]
+                },
+                "obs_randomizer_class": null,
+                "obs_randomizer_kwargs": {}
+            },
+            "low_dim": {
+                "core_class": "MLP",
+                "core_kwargs": {
+                    "input_dim": 14,
+                    "output_dim": 256,
+                    "layer_dims": [256, 256]
+                },
+                "obs_randomizer_class": null,
+                "obs_randomizer_kwargs": {}
+            }
+        }
+    }
+}

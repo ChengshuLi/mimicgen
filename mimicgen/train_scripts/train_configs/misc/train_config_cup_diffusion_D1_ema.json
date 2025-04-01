@@ -4,7 +4,7 @@
         "name": "test_tiago_cup",
         "validate": true,
         "logging": {
-            "terminal_output_to_txt": false,
+            "terminal_output_to_txt": true,
             "log_tb": false,
             "log_wandb": true,
             "wandb_proj_name": "tiago_cup"
@@ -30,13 +30,13 @@
             "enabled": false,
             "n": 2,
             "horizon": 1500,
-            "rate": 10,
+            "rate": 100,
             "warmstart": 0,
             "terminate_on_success": true
         }
     },
     "train": {
-        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_D1_64_fps_2048.hdf5",
+        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_D1_500_fps_2048.hdf5",
         "output_dir": "./logs",
         "num_data_workers": 2,
         "hdf5_cache_mode": "low_dim",
@@ -93,7 +93,7 @@
             "n_groups": 8
         },
         "ema": {
-            "enabled": false,
+            "enabled": true,
             "power": 0.75
         },
         "ddpm": {

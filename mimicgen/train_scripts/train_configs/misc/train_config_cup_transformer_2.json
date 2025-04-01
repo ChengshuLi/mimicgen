@@ -37,7 +37,7 @@
         "env_meta_update_dict": {}
     },
     "train": {
-        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_fps_2048.hdf5",
+        "data": "./datasets/generated_data/test_tiago_cup/robomimic_dataset_D1_500_fps_2048.hdf5",
         "output_dir": "./logs",
         "num_data_workers": 2,
         "hdf5_cache_mode": "low_dim",
@@ -146,7 +146,7 @@
             ]
         },
         "rnn": {
-            "enabled": true,
+            "enabled": false,
             "horizon": 2,
             "hidden_dim": 1024,
             "rnn_type": "LSTM",
@@ -157,8 +157,8 @@
             }
         },
         "transformer": {
-            "enabled": false,
-            "context_length": 10,
+            "enabled": true,
+            "context_length": 2,
             "embed_dim": 512,
             "num_layers": 6,
             "num_heads": 8,
