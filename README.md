@@ -23,6 +23,7 @@ remove the split ratio in case you don't want anything in the validation set
 2. robomimic on the b1k-mimicgen branch
 3. robosuite on its latest branch
 4. omnigibson on its b1k-mimicgen branch  
+5. curobo installation: TODO
 
 
 ### Parameters to consider for curobo:
@@ -35,3 +36,70 @@ remove the split ratio in case you don't want anything in the validation set
 ### Mimicgen relevant config files:
 1. mimicgen/mimicgen/env_interfaces/omnigibson.py
 2. mimicgen/mimicgen/configs/omnigibson.py
+
+
+before clip torso_joint1 type RevoluteJoint limit: tensor(-1.134, device='cuda:0') tensor(1.833, device='cuda:0')
+after clip torso_joint1 type RevoluteJoint limit: tensor(0.424, device='cuda:0') tensor(0.724, device='cuda:0')
+
+before clip torso_joint2 type RevoluteJoint limit: tensor(-2.793, device='cuda:0') tensor(2.531, device='cuda:0')
+after clip torso_joint2 type RevoluteJoint limit: tensor(-2.847, device='cuda:0') tensor(-0.947, device='cuda:0')
+
+before clip torso_joint3 type RevoluteJoint limit: tensor(-2.094, device='cuda:0') tensor(1.833, device='cuda:0')
+after clip torso_joint3 type RevoluteJoint limit: tensor(-1.524, device='cuda:0') tensor(-0.424, device='cuda:0')
+
+before clip torso_joint4 type RevoluteJoint limit: tensor(-3.054, device='cuda:0') tensor(3.054, device='cuda:0')
+after clip torso_joint4 type RevoluteJoint limit: tensor(-0.540, device='cuda:0') tensor(0.540, device='cuda:0')
+
+
+R1 without joint limits
+**************************************************
+trial 21 success: True
+have 16 successes out of 21 trials so far
+have 0 failures out of 21 trials so far
+have 5 Base MP failures, 0 Arm MP failures, 0 Base sampling failures
+**************************************************
+
+
+R1 with joint limits. 4 arm MP failures are because during nav MP, robot collided with table and moved it a lot
+**************************************************
+trial 20 success: True
+have 13 successes out of 20 trials so far
+have 1 failures out of 20 trials so far
+have 2 Base MP failures, 4 Arm MP failures, 0 Base sampling failures
+**************************************************
+
+Observations:
+Start-of-manip visibility is decent (but that's just because this is a table-top setting and our start joint positions are conducive for this. So, we will need an
+explicit visibility constraint). But, during manip the visibility goes really bad. Options:
+a) use arm-no-torso -> This might be limiting when we have more diverse envs (e.g when objects are lower or much higher and when there are more obstacles)
+b) Keep data gen pipeline as is and somehow force the policy to pay more attention to eef camera
+c) Modify curobo motion planner with visibility cost -> This would be ideal!!
+
+
+R1 with joint limits and ARM_NO_TORSO mode
+**************************************************
+trial 20 success: True
+have 12 successes out of 20 trials so far
+have 1 failures out of 20 trials so far
+have 3 Base MP failures, 4 Arm MP failures, 0 Base sampling failures
+**************************************************
+
+
+Analyzing visibilty:
+
+R1 with joint limits and ARM_NO_TORSO mode, table height varied, w/o visibility constraint
+**************************************************
+trial 20 success: True
+have 10 successes out of 20 trials so far
+have 1 failures out of 20 trials so far
+have 1 Base MP failures, 8 Arm MP failures, 0 Base sampling failures
+have 13 trials with obj visible at start of manip
+**************************************************
+
+
+
+Some useful curobo pointers:
+1. Difference between TrajOpt and MotionGen: https://github.com/NVlabs/curobo/discussions/227
+- MotionGen is kind of a wraper over TrajOptSolver. It calls TrajOptSolver's solve_from_solve_state
+2. Details on trajectory optimization of curobo: https://curobo.org/_api/curobo.wrap.reacher.trajopt.html#module-curobo.wrap.reacher.trajopt
+- first running a particle-based solver (MPPI) and then refining with a gradient-based solver (L-BFGS)

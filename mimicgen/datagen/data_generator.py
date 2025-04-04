@@ -496,7 +496,7 @@ class DataGenerator(object):
             if not env.valid_env:
                 break 
             # remove later
-            if phase_ind > 1:
+            if phase_ind > 0:
                 break
             cur_phase_task_spec = self.task_spec[phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
@@ -721,7 +721,7 @@ class DataGenerator(object):
                     grasp_init_views_video_writer=grasp_init_views_video_writer
                 )
                 if exec_results is None:
-                    print('failed to execute the trajectory, breakpoint in data_generator.py')
+                    # print('failed to execute the trajectory, breakpoint in data_generator.py')
                     return None
 
                 # check that trajectory is non-empty

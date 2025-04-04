@@ -52,6 +52,49 @@ from mimicgen.env_interfaces.base import make_interface
 import omnigibson as og
 import omnigibson.lazy as lazy
 
+from omnigibson.objects.primitive_object import PrimitiveObject
+
+def visualize_base_poses(env):
+    # ================== Visualization ==================
+    sampled_base_poses = env.sampled_base_poses
+    base_marker_list = []
+    failures = sampled_base_poses["failure"]
+    for i in range(len(failures)):
+        base_marker = PrimitiveObject(
+            relative_prim_path=f"/base_marker_failure_{i}",
+            primitive_type="Cube",
+            name=f"base_marker_failure_{i}",
+            size=th.tensor([0.03, 0.03, 0.03]),
+            visual_only=True,
+            rgba=th.tensor([1, 0, 0, 1])
+        )
+        base_marker_list.append(base_marker)
+    og.sim.batch_add_objects(base_marker_list, [env.env.scene] * len(base_marker_list))
+    for i in range(len(failures)):
+        base_pos = failures[i]
+        base_marker_list[i].set_position_orientation(position=base_pos)
+
+    base_marker_list = []
+    success = sampled_base_poses["success"]
+    for i in range(len(success)):
+        base_marker = PrimitiveObject(
+            relative_prim_path=f"/base_marker_success_{i}",
+            primitive_type="Cube",
+            name=f"base_marker_success_{i}",
+            size=th.tensor([0.03, 0.03, 0.03]),
+            visual_only=True,
+            rgba=th.tensor([0, 1, 0, 1])
+        )
+        base_marker_list.append(base_marker)
+    og.sim.batch_add_objects(base_marker_list, [env.env.scene] * len(base_marker_list))
+    for i in range(len(success)):
+        base_pos = success[i]
+        base_marker_list[i].set_position_orientation(position=base_pos)
+
+    for _ in range(300): og.sim.step()
+    breakpoint()
+
+    # # ================== Visualization ==================
 
 def get_important_stats(
     new_dataset_folder_path,
@@ -393,6 +436,7 @@ def generate_dataset(
         grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
     
     base_mp_failures, arm_mp_failures, base_sampling_failures = 0, 0, 0
+    obj_visible_at_start_of_manip = 0
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
 
@@ -435,14 +479,17 @@ def generate_dataset(
             video_writer.close()
         
         # breakpoint()
+        if env.err == "BaseMPFailed":
+            base_mp_failures += 1
+        elif env.err == "ArmMPFailed":
+            arm_mp_failures += 1
+        elif env.err == "BaseSamplingFailed":   
+            base_sampling_failures += 1
         
+        if env.obj_visible_at_start_of_manip:
+            obj_visible_at_start_of_manip += 1
+
         if generated_traj is None:
-            if env.err == "BaseMPFailed":
-                base_mp_failures += 1
-            elif env.err == "ArmMPFailed":
-                arm_mp_failures += 1
-            elif env.err == "BaseSamplingFailed":   
-                base_sampling_failures += 1
             success = False
             print("")
             print("*" * 50)
@@ -450,6 +497,7 @@ def generate_dataset(
             print("have {} successes out of {} trials so far".format(num_success, num_attempts))
             print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
             print('have {} Base MP failures, {} Arm MP failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_failures, base_sampling_failures))
+            print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
             print("*" * 50)
             continue
 
@@ -509,6 +557,7 @@ def generate_dataset(
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
         print('have {} Base MP failures, {} Arm MP failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_failures, base_sampling_failures))
+        print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
         print("*" * 50)
 
         # regularly log progress to disk every so often
@@ -539,6 +588,9 @@ def generate_dataset(
         if check_val >= num_trials:
             break
 
+    
+    visualize_base_poses(env)
+    
     # merge all new created files
     print("\nFinished data generation. Merging per-episode hdf5s together...\n")
     MG_FileUtils.merge_all_hdf5(

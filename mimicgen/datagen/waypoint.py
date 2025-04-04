@@ -395,14 +395,15 @@ class WaypointTrajectory(object):
 
         # print("execute")
         # Setting the target object for visibility
-        ref_obj_for_visibility = env.env.scene.object_registry("name", object_ref["arm_left"])
+        ref_obj_for_visibility = env.env.scene.object_registry("name", object_ref["arm_right"])
         env.primitive._tracking_object = ref_obj_for_visibility
 
         robot = env.env.robots[0]
 
         if phase_type == "navigation":
             nav_curobo_mp_start_time = time.time()
-            obj = env.env.scene.object_registry("name", object_ref["arm_left"])
+            obj = env.env.scene.object_registry("name", object_ref["arm_right"])
+            
             seq = self.waypoint_sequences[0]
             left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
             right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
@@ -421,64 +422,112 @@ class WaypointTrajectory(object):
             env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
             # breakpoint()
             # th.manual_seed(3)
-            # NOTE: Temporary fix for increasing base sampling success rate by only passing left ee pose
-            if env.single_arm:
-                action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose={"left": eef_pose["left"]})
-            else:
-                action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose=eef_pose)
-            # action_generator = env.primitive._navigate_to_obj(obj=obj)
             
-            local_env_step = 0
-            states = []
-            actions = []
-            observations = []
-            datagen_infos = []
-            success = {"task": False}
-            # success = {k: False for k in env.is_success()} # success metrics
-            for temp_idx, mp_action in enumerate(action_generator):
-                if temp_idx == 0:
-                    print("Time taken for nav curobo MP: {:.2f} seconds".format(time.time() - nav_curobo_mp_start_time))
-                    nav_execution_start_time = time.time()
-                # This will happen if the base sampling fails or if base MP fails.
-                if mp_action is None:
+            num_tries = 5
+            base_mp_trial = 0
+            nav_mp_success = False
+            while True:
+                
+                # Base condition 
+                if base_mp_trial == num_tries:
+                    print("Base MP failed after {} trials. Giving up.".format(num_tries))
                     env.err = env.primitive.err
                     env.valid_env = env.primitive.valid_env
                     return None
-               
-                mp_action = mp_action.cpu().numpy()
-                # NOTE: For the MultiFinger gripper controler in binary mode that we use for tiago, we need to ensure that the
-                # gripper actions are correctly set based on whether an object is grasped by that gripper or not 
-                if attached_obj["left"] is not None:
-                    mp_action[robot.gripper_action_idx["left"]] = -1
-                if attached_obj["right"] is not None:
-                    mp_action[robot.gripper_action_idx["right"]] = -1
-                state = env.get_state()["states"]
-                obs = env.get_obs_IL()
-                datagen_info = env_interface.get_datagen_info(action=mp_action)
-                env.step(mp_action, video_writer)
-                local_env_step += 1
-                states.append(state)
-                actions.append(mp_action)
-                observations.append(obs)
-                datagen_infos.append(datagen_info)
-                # cur_success_metrics = env.is_success()
-                # for k in success:
-                #     success[k] = success[k] or cur_success_metrics[k]
+                
+                print("Base MP trial: ", base_mp_trial)
+                
+                # # NOTE: Temporary fix for increasing base sampling success rate by only passing left ee pose
+                # if env.single_arm == "left":
+                #     action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose={"left": eef_pose["left"]}, sampled_base_poses=env.sampled_base_poses, visibility_constraint=True)
+                # elif env.single_arm == "right":
+                #     action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose={"right": eef_pose["right"]}, sampled_base_poses=env.sampled_base_poses, visibility_constraint=True)
+                # else:
+                #     action_generator = env.primitive._navigate_to_obj(obj=obj, eef_pose=eef_pose)
+                action_generator = env.primitive._navigate_to_obj(obj=obj, sampled_base_poses=env.sampled_base_poses, visibility_constraint=True)
+                
+                # # remove later
+                # mp_action = next(iter(action_generator))
+                # base_mp_trial += 1
+                # # breakpoint()
+                # env.err = env.primitive.err
+                # if mp_action is None:
+                #     continue
+                
+                local_env_step = 0
+                states = []
+                actions = []
+                observations = []
+                datagen_infos = []
+                success = {"task": False}
+                # success = {k: False for k in env.is_success()} # success metrics
+                for temp_idx, mp_action in enumerate(action_generator):
+                    
+                    # This will happen if the base sampling fails or if base MP fails.
+                    if mp_action is None:
+                        print(f"Base MP trial {base_mp_trial} failed. Retrying...")
+                        base_mp_trial += 1
+                        nav_mp_success = False
+                        break
+                    else:
+                        nav_mp_success = True
+                
+                    if temp_idx == 0:
+                        print("Time taken for nav curobo MP: {:.2f} seconds".format(time.time() - nav_curobo_mp_start_time))
+                        nav_execution_start_time = time.time()
 
-            MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
-            results = dict(
-                states=states,
-                observations=observations,
-                datagen_infos=datagen_infos,
-                actions=np.array(actions),
-                success=bool(success["task"]),
-                mp_end_steps=MP_end_step_local_list,
-                subtask_lengths=local_env_step,
-            )
-            # print('mp_end_steps', results['mp_end_steps'])
-            # print('subtask_lengths', results['subtask_lengths'])
-            print("Time taken for nav execution: {:.2f} seconds".format(time.time() - nav_execution_start_time))
-            return results
+                    mp_action = mp_action.cpu().numpy()
+                    # NOTE: For the MultiFinger gripper controler in binary mode that we use for tiago, we need to ensure that the
+                    # gripper actions are correctly set based on whether an object is grasped by that gripper or not 
+                    if attached_obj["left"] is not None:
+                        mp_action[robot.gripper_action_idx["left"]] = -1
+                    if attached_obj["right"] is not None:
+                        mp_action[robot.gripper_action_idx["right"]] = -1
+                    state = env.get_state()["states"]
+                    obs, obs_info = env.get_obs_IL()
+                    datagen_info = env_interface.get_datagen_info(action=mp_action)
+                    env.step(mp_action, video_writer)
+                    local_env_step += 1
+                    states.append(state)
+                    actions.append(mp_action)
+                    observations.append(obs)
+                    datagen_infos.append(datagen_info)
+                    # cur_success_metrics = env.is_success()
+                    # for k in success:
+                    #     success[k] = success[k] or cur_success_metrics[k]
+
+                # If the base MP was not successful, try again
+                if not nav_mp_success:
+                    continue
+                
+                # # Look at the object
+                # # TODO: Save this action to the results dict
+                # torso_joint_pos = robot.get_joint_positions()[robot.trunk_control_idx]
+                # torso_joint_pos[2] = env.primitive.torso_joint3_pos
+                # torso_joint_pos[3] = env.primitive.torso_joint4_pos
+                # j_pos = robot.get_joint_positions()
+                # j_pos[robot.trunk_control_idx] = torso_joint_pos
+                # action = robot.q_to_action(j_pos).cpu().numpy()
+                # env.step(action, video_writer)
+                # # for _ in range(20): og.sim.step()
+                # # robot.set_joint_positions(torso_joint_pos, indices=robot.trunk_control_idx)
+                # # breakpoint()
+                # for _ in range(20): og.sim.step()
+                
+                MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
+                results = dict(
+                    states=states,
+                    observations=observations,
+                    datagen_infos=datagen_infos,
+                    actions=np.array(actions),
+                    success=bool(success["task"]),
+                    mp_end_steps=MP_end_step_local_list,
+                    subtask_lengths=local_env_step,
+                )
+                # print('mp_end_steps', results['mp_end_steps'])
+                # print('subtask_lengths', results['subtask_lengths'])
+                # print("Time taken for nav execution: {:.2f} seconds".format(time.time() - nav_execution_start_time))
+                return results
 
         # write_video = (video_writer is not None)
         # video_count = 0
@@ -517,7 +566,7 @@ class WaypointTrajectory(object):
         # Temporary: This is just to capture the first image after navigating to the teacup, just for visualization
         if object_ref["arm_left"] == "teacup" and grasp_init_views_video_writer is not None:
             robot_name = env.env.robots[0].name
-            obs = env.get_observation()
+            obs, obs_info = env.get_observation()
             ego_img = obs[f"{robot_name}::{robot_name}:eyes:Camera:0::rgb"]
             # eef_left_img = obs[f"{robot_name}::{robot_name}:left_eef_link:Camera:0::rgb"]
             # eef_right_img = obs[f"{robot_name}::{robot_name}:right_eef_link:Camera:0::rgb"]
@@ -553,8 +602,10 @@ class WaypointTrajectory(object):
             right_waypoint_pos, right_waypoint_ori = robot.get_eef_pose("right")
 
         # remove later. Setting the current right ee pose as the target to increase MP success rate
-        if env.single_arm:
+        if env.single_arm == "left":
             right_waypoint_pos, right_waypoint_ori = robot.get_eef_pose("right")
+        elif env.single_arm == "right":
+            left_waypoint_pos, left_waypoint_ori = robot.get_eef_pose("left")
 
         # If at least one hand has motion planner waypoints, plan the motion
         if len(left_mp_waypoints) > 0 or len(right_mp_waypoints) > 0:
@@ -572,7 +623,7 @@ class WaypointTrajectory(object):
             emb_sel = CuRoboEmbodimentSelection.ARM if len(left_mp_waypoints) > 0 and len(right_mp_waypoints) > 0 else CuRoboEmbodimentSelection.ARM_NO_TORSO
             
             # To test MP in default mode instead of arm mode, uncomment the line below
-            # emb_sel = CuRoboEmbodimentSelection.DEFAULT
+            emb_sel = CuRoboEmbodimentSelection.ARM_NO_TORSO
             
             # Attached the object to the robot for planning
             if attached_obj is None:
@@ -586,25 +637,75 @@ class WaypointTrajectory(object):
                         attached_obj_scale[robot.eef_link_names[arm]] = 0.9
                 attached_obj = attached_obj_new
 
-            print("ARM MP START")
-            arm_curobo_mp_start_time = time.time()
+            # For single arm only 
+            if env.single_arm == "left":
+                del target_pos["right_eef_link"]
+                del target_quat["right_eef_link"]
+            elif env.single_arm == "right":
+                del target_pos["left_eef_link"]
+                del target_quat["left_eef_link"]
+
+            # Check object visibility at start-of-manip step
+            try:
+                obs, obs_info = env.get_observation()
+                seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
+                seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
+                key_of_coffee_cup = next((key for key, value in seg_instance_info.items() if value == "coffee_cup"), None)
+                if key_of_coffee_cup is None:
+                    count = 0
+                else:
+                    count = (seg_instance == key_of_coffee_cup).sum().item()
+                if count > 150:
+                    env.obj_visible_at_start_of_manip = True
+            except Exception as e:
+                breakpoint()
+
             
-            # Generate collision-free trajectories to the sampled eef poses (including self-collisions)
-            successes, traj_paths = env.cmg.compute_trajectories(
-                target_pos=target_pos,
-                target_quat=target_quat,
-                is_local=False,
-                max_attempts=50,
-                timeout=60.0,
-                ik_fail_return=50,
-                enable_finetune_trajopt=True,
-                finetune_attempts=1,
-                return_full_result=False,
-                success_ratio=1.0,
-                attached_obj=attached_obj,
-                attached_obj_scale=attached_obj_scale,
-                emb_sel=emb_sel,
-            )
+            print("ARM MP START")
+            num_tries = 5
+            arm_mp_trial = 0
+            arm_curobo_mp_start_time = time.time()
+            new_target_pos = copy.deepcopy(target_pos)
+            while True:
+                
+                # Base condition 
+                if arm_mp_trial == num_tries:
+                    print("Arm MP failed after {} trials. Giving up.".format(num_tries))
+                    env.err = "ArmMPFailed"
+                    env.valid_env = False 
+                    return None
+            
+                # breakpoint()
+                # Generate collision-free trajectories to the sampled eef poses (including self-collisions)
+                mp_results, traj_paths = env.cmg.compute_trajectories(
+                    target_pos=new_target_pos,
+                    target_quat=target_quat,
+                    is_local=False,
+                    max_attempts=50,
+                    timeout=60.0,
+                    ik_fail_return=50,
+                    enable_finetune_trajopt=True,
+                    finetune_attempts=1,
+                    return_full_result=True,
+                    success_ratio=1.0,
+                    attached_obj=attached_obj,
+                    attached_obj_scale=attached_obj_scale,
+                    emb_sel=emb_sel,
+                )
+
+                successes = mp_results[0].success 
+                success_status, traj_path = successes[0], traj_paths[0]
+
+                if not success_status:
+                    print(f"Arm MP trial {arm_mp_trial} failed with status {mp_results[0].status}. Retrying...")
+                    arm_mp_trial += 1
+                    # breakpoint()
+                    # modify target_pos a bit
+                    for k in target_pos.keys():
+                        new_target_pos[k] = target_pos[k] + th.rand(3) * 0.01 - 0.005
+                    continue
+                else:
+                    break
         
             print("Time taken for arm curobo MP: {:.2f} seconds".format(time.time() - arm_curobo_mp_start_time))
             arm_mp_execution_start_time = time.time()
@@ -617,17 +718,6 @@ class WaypointTrajectory(object):
             env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
             env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
 
-            success_status, traj_path = successes[0], traj_paths[0]
-            # print("success status", success_status)
-            # breakpoint()
-            # TODO: change the logic, if the motion planner fails, then we reply the trajectory
-            if not success_status:
-                print('Arm motion planning failed')
-                env.valid_env = False 
-                env.err = "ArmMPFailed"
-                results = None
-                return results
-            assert success_status, "motion planning failed"
 
             # import pdb; pdb.set_trace()
             # Convert planned joint trajectory to actions
@@ -694,7 +784,7 @@ class WaypointTrajectory(object):
             for i, mp_action in enumerate(mp_actions):
                 for _ in range(num_repeat):
                     state = env.get_state()["states"]
-                    obs = env.get_obs_IL()
+                    obs, obs_info = env.get_obs_IL()
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action, video_writer)
                     env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
@@ -727,7 +817,7 @@ class WaypointTrajectory(object):
             #         if right_gripper_action is not None:
             #             action[env_interface.gripper_action_dim[1]] = right_gripper_action[1]
             #         state = env.get_state()["states"]
-            #         # obs = env.get_obs_IL()
+            #         # obs, obs_info = env.get_obs_IL()
             #         datagen_info = env_interface.get_datagen_info(action=action)
             #         env.step(action)
             #         env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
@@ -774,7 +864,7 @@ class WaypointTrajectory(object):
         # breakpoint()
         
         # Temporary fix for only moving the left arm (for single arm tasks) during replay
-        if env.single_arm:
+        if env.single_arm == "left":
             current_right_ee_pose = robot.get_eef_pose("right")
             current_right_ee_pos = current_right_ee_pose[0]
             current_right_ee_quat = current_right_ee_pose[1]
@@ -782,6 +872,14 @@ class WaypointTrajectory(object):
             current_right_ee_pose = th.eye(4)
             current_right_ee_pose[:3, :3] = current_right_ee_matrix
             current_right_ee_pose[:3, 3] = current_right_ee_pos
+        elif env.single_arm == "right":
+            current_left_ee_pose = robot.get_eef_pose("left")
+            current_left_ee_pos = current_left_ee_pose[0]
+            current_left_ee_quat = current_left_ee_pose[1]
+            current_left_ee_matrix = T.quat2mat(current_left_ee_quat)
+            current_left_ee_pose = th.eye(4)
+            current_left_ee_pose[:3, :3] = current_left_ee_matrix
+            current_left_ee_pose[:3, 3] = current_left_ee_pos
         
         # For each pair of waypoints, we extract the pose for each hand and then convert to action
         # We also overwrite the gripper actions with the ones from the waypoints
@@ -790,8 +888,10 @@ class WaypointTrajectory(object):
             pose[:4, :] = left_waypoint.pose[:4, :]
             pose[4:, :] = right_waypoint.pose[4:, :]
             # Temporary fix for only moving the left arm (for single arm tasks) during replay
-            if env.single_arm:
+            if env.single_arm == "left":
                 pose[4:, :] = current_right_ee_pose
+            elif env.single_arm == "right":
+                pose[:4, :] = current_left_ee_pose
             replay_action = env_interface.target_pose_to_action(target_pose=pose)
             replay_action[env_interface.gripper_action_dim[0]] = left_waypoint.gripper_action[0]
             replay_action[env_interface.gripper_action_dim[1]] = right_waypoint.gripper_action[1]
@@ -809,7 +909,7 @@ class WaypointTrajectory(object):
 
             state = env.get_state()["states"]
             temp_start_time = time.time()
-            obs = env.get_obs_IL()
+            obs, obs_info = env.get_obs_IL()
             datagen_info = env_interface.get_datagen_info(action=replay_action)
             env.step(replay_action, video_writer)
             left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
