@@ -752,3 +752,49 @@ class MG_TestR1Cup(OmniGibsonInterfaceBimanual):
         # signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
 
         return signals
+    
+class MG_R1PutAwayCup(OmniGibsonInterfaceBimanual):
+    """
+    Corresponds to OG test_tiago_cup task and variants.
+    """
+    def get_object_poses(self):
+        """
+        Gets the pose of each object relevant to MimicGen data generation in the current scene.
+
+        Returns:
+            object_poses (dict): dictionary that maps object name (str) to object pose matrix (4x4 np.array)
+        """
+        # two relative objects: coffee_cup and teacup
+        return dict(
+            coffee_cup=self.get_object_pose(obj=self.env.scene.object_registry("name", "coffee_cup")),
+            teacup=self.get_object_pose(obj=self.env.scene.object_registry("name", "teacup")),
+            breakfast_table=self.get_object_pose(obj=self.env.scene.object_registry("name", "breakfast_table")),
+        )
+
+    def get_subtask_term_signals(self):
+        """
+        Gets a dictionary of binary flags for each subtask in a task. The flag is 1
+        when the subtask has been completed and 0 otherwise. MimicGen only uses this
+        when parsing source demonstrations at the start of data generation, and it only
+        uses the first 0 -> 1 transition in this signal to detect the end of a subtask.
+
+        Returns:
+            subtask_term_signals (dict): dictionary that maps subtask name to termination flag (0 or 1)
+        """
+        signals = dict()
+
+        signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.scene.object_registry("name", "coffee_cup"))))
+
+        # TODO: need to check why the grasp signal can be -1 before 1
+        # TODO: the current setup cannot handle arm role change
+        # TODO: need to be changed
+        # TRUE = 1
+        # UNKNOWN = 0
+        # FALSE = -1
+        # signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"])))
+        # signals["ungrasp_right"] = abs(1 - abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"]))))
+
+        # signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
+        # signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
+
+        return signals

@@ -36,6 +36,10 @@ import torch as th
 th.set_printoptions(precision=3, sci_mode=False)
 import warnings
 warnings.filterwarnings('ignore', module='trimesh')
+import logging
+# Disable all WARNING and below logs from trimesh
+logging.getLogger('trimesh').setLevel(logging.ERROR)
+logging.getLogger('imageio_ffmpeg').setLevel(logging.ERROR)
 
 import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
@@ -53,6 +57,9 @@ import omnigibson as og
 import omnigibson.lazy as lazy
 
 from omnigibson.objects.primitive_object import PrimitiveObject
+
+import os
+os.environ["TRIMESH_NO_PYEMBREE"] = "1"
 
 def visualize_base_poses(env):
     # ================== Visualization ==================
@@ -91,8 +98,8 @@ def visualize_base_poses(env):
         base_pos = success[i]
         base_marker_list[i].set_position_orientation(position=base_pos)
 
-    for _ in range(300): og.sim.step()
-    breakpoint()
+    # for _ in range(300): og.sim.step()
+    # breakpoint()
 
     # # ================== Visualization ==================
 
@@ -104,6 +111,7 @@ def get_important_stats(
     num_problematic,
     start_time=None,
     ep_length_stats=None,
+    all_episode_logs=None
 ):
     """
     Return a summary of important stats to write to json.
@@ -130,6 +138,7 @@ def get_important_stats(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
+        all_episode_logs=all_episode_logs
     )
     if (ep_length_stats is not None):
         important_stats.update(ep_length_stats)
@@ -173,7 +182,7 @@ def generate_dataset(
     """
 
     # time this run
-    start_time = time.time()
+    script_start_time = time.time()
 
     # check some args
     write_video = (video_path is not None)
@@ -393,24 +402,6 @@ def generate_dataset(
     # TODO: need to make this specialized for different tasks
     # including changing the properties of different objects
 
-    # Increase gripper friction
-    state = og.sim.dump_state()
-    og.sim.stop()
-    target_friction = 2.0
-    gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
-        prim_path=f"{env.env.robots[0].prim_path}/gripper_mat",
-        name="gripper_material",
-        static_friction=target_friction,
-        dynamic_friction=target_friction,
-        restitution=None,
-    )
-    for links in env.env.robots[0].finger_links.values():
-        for link in links:
-            for msh in link.collision_meshes.values():
-                msh.apply_physics_material(gripper_mat)
-    og.sim.play()
-    og.sim.load_state(state)
-
     # notebook = env.env.scene.object_registry("name", "notebook")
     # notebook.links['base_link'].density = 10
 
@@ -435,8 +426,14 @@ def generate_dataset(
         os.makedirs(f"{run_dir}/debug_videos/{video_path}", exist_ok=True) 
         grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
     
-    base_mp_failures, arm_mp_failures, base_sampling_failures = 0, 0, 0
+    base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures = 0, 0, 0, 0, 0
     obj_visible_at_start_of_manip = 0
+    all_episode_logs = {
+        "episode_number": [],
+        "err_status": [],
+        "time_taken": [],
+        "task_success": [],
+    }
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
 
@@ -447,7 +444,7 @@ def generate_dataset(
 
         # generate trajectory
         try:
-            start_time = time.time()
+            episode_start_time = time.time()
             generated_traj = data_generator.generate(
                 env=env,
                 env_interface=env_interface,
@@ -461,9 +458,17 @@ def generate_dataset(
                 pause_subtask=pause_subtask,
                 grasp_init_views_video_writer=grasp_init_views_video_writer
             )
+            episode_time_taken = time.time() - episode_start_time
             print("==============================")
-            print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
+            print("Time taken for generation: {:.2f} seconds".format(episode_time_taken))
             print("==============================")
+
+            # save episode logs
+            all_episode_logs["episode_number"].append(num_attempts+num_problematic)
+            all_episode_logs["err_status"].append(env.err)
+            all_episode_logs["time_taken"].append(episode_time_taken)
+            all_episode_logs["task_success"].append(env.is_success()["task"])
+
         except exceptions_to_except as e:
             # problematic trajectory - do not have this count towards our total number of attempts, and re-try
             print("")
@@ -471,6 +476,14 @@ def generate_dataset(
             print("WARNING: got rollout exception {}".format(e))
             print("*" * 50)
             print("")
+            
+            episode_time_taken = time.time() - episode_start_time
+            # save episode logs
+            all_episode_logs["episode_number"].append(num_attempts+num_problematic)
+            all_episode_logs["err_status"].append("problematic")
+            all_episode_logs["time_taken"].append(episode_time_taken)
+            all_episode_logs["task_success"].append(False)
+            
             num_problematic += 1
             continue
         
@@ -481,10 +494,14 @@ def generate_dataset(
         # breakpoint()
         if env.err == "BaseMPFailed":
             base_mp_failures += 1
-        elif env.err == "ArmMPFailed":
-            arm_mp_failures += 1
+        elif env.err == "ArmMPTrajOptFailed":
+            arm_mp_trajopt_failures += 1
+        elif env.err == "ArmMPIKFailed":
+            arm_mp_ik_failures += 1
         elif env.err == "BaseSamplingFailed":   
             base_sampling_failures += 1
+        elif env.err == "ArmMPOtherFailed":
+            arm_mp_other_failures += 1
         
         if env.obj_visible_at_start_of_manip:
             obj_visible_at_start_of_manip += 1
@@ -496,7 +513,7 @@ def generate_dataset(
             print("trial {} success: {}".format(num_attempts, success))
             print("have {} successes out of {} trials so far".format(num_success, num_attempts))
             print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-            print('have {} Base MP failures, {} Arm MP failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_failures, base_sampling_failures))
+            print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures))
             print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
             print("*" * 50)
             continue
@@ -526,6 +543,7 @@ def generate_dataset(
                 mp_end_steps=generated_traj["mp_end_steps"],
                 subtask_lengths=generated_traj["subtask_lengths"],
                 sensor_info=generated_traj["sensor_info"],
+                episode_time_taken=episode_time_taken
             )
             selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
@@ -549,6 +567,7 @@ def generate_dataset(
                     mp_end_steps=generated_traj["mp_end_steps"],
                     subtask_lengths=generated_traj["subtask_lengths"],
                     sensor_info=generated_traj["sensor_info"],
+                    episode_time_taken=episode_time_taken
                 )
 
         print("")
@@ -556,7 +575,7 @@ def generate_dataset(
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} Base MP failures, {} Arm MP failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_failures, base_sampling_failures))
+        print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures))
         print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
         print("*" * 50)
 
@@ -570,8 +589,9 @@ def generate_dataset(
                 num_failures=num_failures,
                 num_attempts=num_attempts,
                 num_problematic=num_problematic,
-                start_time=start_time,
+                start_time=script_start_time,
                 ep_length_stats=None,
+                all_episode_logs=all_episode_logs,
             )
 
             # write stats to disk
@@ -589,7 +609,11 @@ def generate_dataset(
             break
 
     
-    visualize_base_poses(env)
+    # visualize_base_poses(env)
+
+    # save episode logs
+    with open(os.path.join(new_dataset_folder_path, "episode_logs.json"), "w") as f:
+        json.dump(all_episode_logs, f, indent=4)
     
     # merge all new created files
     print("\nFinished data generation. Merging per-episode hdf5s together...\n")
@@ -626,7 +650,7 @@ def generate_dataset(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
-        start_time=start_time,
+        start_time=script_start_time,
         ep_length_stats=ep_length_stats,
     )
     print("\nStats Summary")
@@ -669,8 +693,9 @@ def generate_dataset(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
-        start_time=start_time,
+        start_time=script_start_time,
         ep_length_stats=ep_length_stats,
+        all_episode_logs=all_episode_logs,
     )
 
     # write stats to disk

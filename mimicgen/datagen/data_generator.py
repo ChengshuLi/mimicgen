@@ -491,20 +491,30 @@ class DataGenerator(object):
         generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
 
         # for left arms first
-        for phase_ind in range(self.num_phases):
+        for current_phase_ind in range(self.num_phases):
             # Don't execute rest of the phases if any of the previous phases failed (mostly due to failure in MP)
             if not env.valid_env:
                 break 
-            # remove later
-            if phase_ind > 0:
-                break
-            cur_phase_task_spec = self.task_spec[phase_ind]
+            # # remove later
+            # if current_phase_ind > 1:
+            #     break
+            
+            # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
+            phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]
+            target_phase_ind = current_phase_ind
+            if phase_type == "navigation" and current_phase_ind < self.num_phases - 1:
+                target_phase_ind += 1
+            
+            cur_phase_task_spec = self.task_spec[target_phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
             # restructure subtasks indexes and reference objects
-            all_subtask_inds = all_subtask_inds_structure[phase_ind]
+            all_subtask_inds = all_subtask_inds_structure[target_phase_ind]
             subtask_ind_vals = np.sort(np.unique(np.concatenate((np.unique(all_subtask_inds[0]), np.unique(all_subtask_inds[1])))))
             num_subtasks = len(subtask_ind_vals) - 1
+            
+            if phase_type == "navigation" and current_phase_ind < self.num_phases - 1:
+                 num_subtasks = 1
             
             # a distance based heuristic to change the role of the two arms
             # calculate the start of the replay part
@@ -533,11 +543,12 @@ class DataGenerator(object):
                 all_subtask_inds = all_subtask_inds_new
 
             for subtask_ind_reordered in range(num_subtasks):
-                print("========== Phase {} Subtask {} ==========".format(phase_ind, subtask_ind_reordered))
+                print("========== Phase {} Subtask {} ==========".format(current_phase_ind, subtask_ind_reordered))
 
-                # remove later
-                if phase_ind == 1 and subtask_ind_reordered == 1:
-                    break
+                # # remove later
+                # if current_phase_ind == 1 and subtask_ind_reordered == 1:
+                #     break
+                # breakpoint()
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
@@ -558,7 +569,7 @@ class DataGenerator(object):
                     # print('subtask start and end step', selected_src_subtask_inds)
                     # print('arm_spec_subtask_inds', arm_spec_subtask_inds)
 
-                    is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
+                    is_first_subtask = (subtask_ind == 0) and (target_phase_ind == 0)
                     is_first_subtask_in_phase = (subtask_ind == 0)
 
                     cur_datagen_info = env_interface.get_datagen_info()
@@ -567,7 +578,7 @@ class DataGenerator(object):
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
                     key_name = arm_name.replace('arm_', '')
                     attached_obj_dict[key_name] = cur_phase_task_spec[arm_i][subtask_ind]["attached_obj"]
-                    MP_end_steps.append(end_step_of_MP_local[phase_ind][arm_i][subtask_ind])
+                    MP_end_steps.append(end_step_of_MP_local[target_phase_ind][arm_i][subtask_ind])
                     
                     # get poses
                     src_ep_datagen_info = self.src_dataset_infos[selected_src_demo_ind]
@@ -714,12 +725,15 @@ class DataGenerator(object):
                     camera_names=camera_names,
                     bimanual=self.bimanual,
                     cur_subtask_end_step_MP=MP_end_steps,
-                    # attached_obj=attached_obj[phase_ind][subtask_ind_reordered],
+                    # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
                     attached_obj=attached_obj_dict,
-                    phase_type=self.task_spec[phase_ind][0][0]["phase_type"],
+                    phase_type=phase_type,
                     object_ref=object_ref,
                     grasp_init_views_video_writer=grasp_init_views_video_writer
                 )
+                # To let any remaining simulation steps finish.
+                for _ in range(50): og.sim.step()
+                
                 if exec_results is None:
                     # print('failed to execute the trajectory, breakpoint in data_generator.py')
                     return None
