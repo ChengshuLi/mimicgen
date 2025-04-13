@@ -58,7 +58,3 @@ Some useful curobo pointers:
 - MotionGen is kind of a wraper over TrajOptSolver. It calls TrajOptSolver's solve_from_solve_state
 2. Details on trajectory optimization of curobo: https://curobo.org/_api/curobo.wrap.reacher.trajopt.html#module-curobo.wrap.reacher.trajopt
 - first running a particle-based solver (MPPI) and then refining with a gradient-based solver (L-BFGS)
-
-
-Current issues:
-1. ARM MP (ik failure) occuring a lot!

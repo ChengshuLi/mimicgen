@@ -420,6 +420,7 @@ class WaypointTrajectory(object):
                 success (bool): whether the trajectory successfully solved the task or not
         """
 
+        # breakpoint()
         # If both are not None, set right arm as the reference object
         if object_ref["arm_right"] is None:
             ref_object = object_ref["arm_left"]
@@ -477,8 +478,10 @@ class WaypointTrajectory(object):
             right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
             # breakpoint()
             
+            # left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
             # left_waypoint = left_mp_waypoints[-1]
             # left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
+            # right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
             # right_waypoint = right_mp_waypoints[-1]
             # right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
 
@@ -498,7 +501,7 @@ class WaypointTrajectory(object):
             # breakpoint()
             # th.manual_seed(3)
             
-            num_tries = 5
+            num_tries = 3
             base_mp_trial = 0
             nav_mp_success = False
             while True:
@@ -519,7 +522,7 @@ class WaypointTrajectory(object):
                     action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"right": eef_pose["right"]}, visibility_constraint=True)
                 else:
                     action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose=eef_pose, visibility_constraint=True)
-                # action_generator = env.primitive._navigate_to_obj(obj=obj, visibility_constraint=False)
+                # action_generator = env.primitive._navigate_to_obj(obj=ref_obj, visibility_constraint=True)
                 
                 # # remove later
                 # mp_action = next(iter(action_generator))
@@ -740,28 +743,29 @@ class WaypointTrajectory(object):
             
             print("ARM MP START")
             eyes_target_pos, eyes_target_quat = None, None
-            # if env.enable_head_tracking:
-            #     obj_pose = ref_obj.get_position_orientation()
-            #     eyes_target_pos = obj_pose[0]
-            #     eyes_target_quat = obj_pose[1]
+            if env.enable_head_tracking:
+                obj_pose = ref_obj.get_position_orientation()
+                eyes_target_pos = obj_pose[0]
+                eyes_target_quat = obj_pose[1]
             
-            num_tries = 5
+            num_tries = 3
             arm_mp_trial = 0
             arm_curobo_mp_start_time = time.time()
             new_target_pos = copy.deepcopy(target_pos)
             while True:
                 
                 # Base condition 
-                if arm_mp_trial == num_tries:
-                    print("Arm MP failed after {} trials. Giving up.".format(num_tries))
-                    if "TRAJOPT_FAIL" in mp_results[0].status.value:
-                        env.err = "ArmMPTrajOptFailed"
-                    elif "IK_FAIL" in mp_results[0].status.value:
-                        env.err = "ArmMPIKFailed"
-                    else:
-                        env.err = "ArmMPOtherFailed"
-                    env.valid_env = False 
-                    return None
+                if arm_mp_trial > 0:
+                    if arm_mp_trial == num_tries or ("IK Fail" in mp_results[0].status.value):
+                        print("Arm MP failed after {} trials. Giving up.".format(num_tries))
+                        if "TrajOpt Fail" in mp_results[0].status.value:
+                            env.err = "ArmMPTrajOptFailed"
+                        elif "IK Fail" in mp_results[0].status.value:
+                            env.err = "ArmMPIKFailed"
+                        else:
+                            env.err = "ArmMPOtherFailed"
+                        env.valid_env = False 
+                        return None
                             
                 # breakpoint()
                 # Aggregate target_pos and target_quat to match batch_size
@@ -777,7 +781,7 @@ class WaypointTrajectory(object):
                     is_local=False,
                     max_attempts=50,
                     timeout=60.0,
-                    ik_fail_return=50,
+                    ik_fail_return=10,
                     enable_finetune_trajopt=True,
                     finetune_attempts=1,
                     return_full_result=True,

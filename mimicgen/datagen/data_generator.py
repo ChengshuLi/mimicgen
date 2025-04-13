@@ -404,6 +404,7 @@ class DataGenerator(object):
         # sample new task instance
         env.reset()
         new_initial_state = env.get_state()
+        # breakpoint()
 
 
         # # # check collisions between robot and all other objects
@@ -496,7 +497,7 @@ class DataGenerator(object):
             if not env.valid_env:
                 break 
             # # remove later
-            # if current_phase_ind > 1:
+            # if current_phase_ind > 0:
             #     break
             
             # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor

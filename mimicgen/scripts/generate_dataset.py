@@ -426,7 +426,7 @@ def generate_dataset(
         os.makedirs(f"{run_dir}/debug_videos/{video_path}", exist_ok=True) 
         grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
     
-    base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures = 0, 0, 0, 0, 0
+    base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures = 0, 0, 0, 0, 0, 0
     obj_visible_at_start_of_manip = 0
     all_episode_logs = {
         "episode_number": [],
@@ -494,6 +494,8 @@ def generate_dataset(
         # breakpoint()
         if env.err == "BaseMPFailed":
             base_mp_failures += 1
+        elif env.err == "BaseMPIKFailed":
+            base_mp_ik_failures += 1
         elif env.err == "ArmMPTrajOptFailed":
             arm_mp_trajopt_failures += 1
         elif env.err == "ArmMPIKFailed":
@@ -513,7 +515,7 @@ def generate_dataset(
             print("trial {} success: {}".format(num_attempts, success))
             print("have {} successes out of {} trials so far".format(num_success, num_attempts))
             print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-            print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures))
+            print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
             print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
             print("*" * 50)
             continue
@@ -575,7 +577,7 @@ def generate_dataset(
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures))
+        print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
         print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
         print("*" * 50)
 
