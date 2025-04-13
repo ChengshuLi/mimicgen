@@ -386,6 +386,7 @@ def write_demo_to_hdf5(
     mp_end_steps=None,
     subtask_lengths=None,
     sensor_info=None,
+    episode_time_taken=None
 ):
     """
     Helper function to write demonstration to an hdf5 file (robomimic format) in a folder. It will be 
@@ -455,12 +456,18 @@ def write_demo_to_hdf5(
     if sensor_info is not None:
         for k2 in sensor_info:            
             ep_data_grp.create_dataset("sensor_info/{}".format(k2), data=np.array(sensor_info[k2]))
+    
+    # todo: has bug in it
+    # if external_sensor_info is not None:
+    #     for k in external_sensor_info:
+    #         ep_data_grp.create_dataset("external_sensor_info/{}".format(k), data=np.array(external_sensor_info[k]))
 
     # episode metadata
     if ("model" in initial_state) and (initial_state["model"] is not None):
         # only for robosuite envs
         ep_data_grp.attrs["model_file"] = initial_state["model"] # model xml for this episode
     ep_data_grp.attrs["num_samples"] = actions.shape[0] # number of transitions in this episode
+    ep_data_grp.attrs["episode_time_taken"] = episode_time_taken # time taken to complete this episode
 
     # global metadata
     data_grp.attrs["total"] = actions.shape[0]

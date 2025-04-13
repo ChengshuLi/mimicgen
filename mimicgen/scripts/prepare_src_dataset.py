@@ -301,6 +301,7 @@ def prepare_src_dataset_new(
     all_datagen_info = env.playback_dataset(record_data=False, callback=env_interface.get_datagen_info)
 
     env.input_hdf5.close()
+    breakpoint()
 
     # open file to modify it
     f = h5py.File(dataset_path, "a")

@@ -210,7 +210,7 @@ class DataGenerator(object):
 
     def merge_trajs(self, traj_list_all):
         # merge the waypoints for each arm
-        print('#################### in merge trajectories ####################')
+        # print('#################### in merge trajectories ####################')
         
         waypoint_traj_list = []
         for i in range(2):
@@ -222,7 +222,7 @@ class DataGenerator(object):
                         waypoint_traj.add_waypoint_sequence(seq)
                     else:
                         waypoint_traj.waypoint_sequences[-1].sequence += seq.sequence
-                    print('num waypoints:', len(waypoint_traj.waypoint_sequences[-1].sequence))
+                    # print('num waypoints:', len(waypoint_traj.waypoint_sequences[-1].sequence))
             waypoint_traj_list.append(waypoint_traj)
         
         
@@ -334,7 +334,7 @@ class DataGenerator(object):
                         end_step = self.src_dataset_infos[0].eef_pose.shape[0]
 
                     end_step_of_MP[-1][-1].append(end_step)
-        print('end_step_of_MP', end_step_of_MP)
+        # print('end_step_of_MP', end_step_of_MP)
         return end_step_of_MP
 
     def parse_annotations(self, annotations):
@@ -353,8 +353,9 @@ class DataGenerator(object):
         video_skip=5,
         camera_names=None,
         pause_subtask=False,
-        disable_marker_vis=False,
+        enable_marker_vis=False,
         ds_ratio=1,
+        grasp_init_views_video_writer=None
     ):
         """
         Attempt to generate a new demonstration.
@@ -407,6 +408,7 @@ class DataGenerator(object):
         env.customize_physical_properties() # change physical properties of the objects and robot for each task 
         env.reset()
         new_initial_state = env.get_state()
+        # breakpoint()
 
         # TODO: need to reinfine the following function, the function is to make sure the robot is not in contact with the objects at the beginning
         # # # check collisions between robot and all other objects
@@ -444,75 +446,21 @@ class DataGenerator(object):
 
         # set camera postion
         import omnigibson as og
-
+        import torch as th
         # og.sim.viewer_camera.set_position_orientation(
         #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
         #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
         # ) # viewer position
-        # og.sim.viewer_camera.set_position_orientation(
-        #     position=th.tensor([ 2.7668, -0.0084,  1.9879]),
-        #     orientation=th.tensor([0.3260, 0.3297, 0.6300, 0.6229]),
-        # ) # viewer position
-        # # og.sim.viewer_camera.get_position_orientation()
-        # # (tensor([ 2.7668, -0.0084,  1.9879]), tensor([0.3260, 0.3297, 0.6300, 0.6229]))
-        # # if og.sim.viewer_camera.image_height != 180 or og.sim.viewer_camera.image_width != 320:
-        # og.sim.viewer_camera.image_height = 180
-        # og.sim.viewer_camera.image_width = 320
-        # og.sim.viewer_camera._add_modality_to_backend(modality='depth_linear')
-        # og.sim.viewer_camera._modalities = {"depth_linear", "rgb"}
-        # print('viewer intrinsic matrix', og.sim.viewer_camera.intrinsic_matrix)
-        # print('viewer pose', og.sim.viewer_camera.get_position_orientation())
 
-        # sensor = env.env._external_sensors['external_sensor0']
+        sensor_info = env.sensor_setup()
+        for _ in range(5): og.sim.render()
+        # breakpoint()
 
-        # sensor config option 1: facing robot
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        #     )
-        
-        # sensor config option 2: camera zoomed in facing the robot
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 1.0693, -0.0211,  0.9937]),
-        #     orientation=th.tensor([0.2479, 0.2451, 0.6590, 0.6665]),
-            # )
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 1.0304, -0.0309,  1.0272]),
-        #     orientation=th.tensor([0.2690, 0.2659, 0.6509, 0.6583]),
-        # )
-
-        # sensor config option 3: camera zoomed in
-        # sensor.set_position_orientation(
-        #     position=th.tensor([ 0.1300, -0.0262,  0.8532]),
-        #     orientation=th.tensor([-0.3200,  0.3207,  0.6311, -0.6296]),
-            # )
-        # sensor.add_modality("depth_linear")
-        # sensor.add_modality("rgb")
-        # sensor._add_modality_to_backend(modality='depth_linear')
-        # sensor._add_modality_to_backend(modality='rgb')
-        # sensor._modalities = {"depth_linear", "rgb"}
-
-        # if sensor.image_height != 180 or sensor.image_width != 320:
-        # sensor.image_height = 180
-        # sensor.image_width = 320
-
-        sensor.image_height = 1080
-        sensor.image_width = 1920
-                
-        sensor_info = env.sensor_setup() # set up the sensor, pose, resolution for each task 
-        for _ in range(50): og.sim.render()
+        # print(sensor.intrinsic_matrix)
+        # print(sensor.get_position_orientation())
 
         # parse MP_end_step from the configuration file
         end_step_of_MP_local = self.parse_MP_end_step_local()
-
-        # after changing the phase structure, 
-        # self.src_subtask_indices
-        # [
-        # [array([[[  0, 300],
-        # [300, 650]]]), array([[[  0, 350],
-        # [350, 650]]])], 
-        # [array([[[650, 992]]]), array([[[650, 992]]])]
-        # ]
 
         # sample new subtask boundaries
         all_subtask_inds_structure = []
@@ -548,34 +496,45 @@ class DataGenerator(object):
         generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
 
         # for left arms first
-        for phase_ind in range(self.num_phases):
-            # print("phase", phase_ind)
-            # breakpoint()
+        for current_phase_ind in range(self.num_phases):
+            # Don't execute rest of the phases if any of the previous phases failed (mostly due to failure in MP)
+            if not env.valid_env:
+                break 
+            # # remove later
+            # if current_phase_ind > 0:
+            #     break
+            
             # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
-            phase_type = self.task_spec[phase_ind][0][0]["phase_type"]
-            if phase_type == "navigation" and phase_ind < self.num_phases - 1:
-                phase_ind += 1
-            cur_phase_task_spec = self.task_spec[phase_ind]
+            phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]
+            target_phase_ind = current_phase_ind
+            if phase_type == "navigation" and current_phase_ind < self.num_phases - 1:
+                target_phase_ind += 1
+            
+            cur_phase_task_spec = self.task_spec[target_phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
             # restructure subtasks indexes and reference objects
-            all_subtask_inds = all_subtask_inds_structure[phase_ind]
+            all_subtask_inds = all_subtask_inds_structure[target_phase_ind]
             subtask_ind_vals = np.sort(np.unique(np.concatenate((np.unique(all_subtask_inds[0]), np.unique(all_subtask_inds[1])))))
             num_subtasks = len(subtask_ind_vals) - 1
-            if phase_type == "navigation" and phase_ind < self.num_phases - 1:
-                num_subtasks = 1
+            
+            if phase_type == "navigation" and current_phase_ind < self.num_phases - 1:
+                 num_subtasks = 1
             
             # a distance based heuristic to change the role of the two arms
             # calculate the start of the replay part
             # currently assume that the start point is the first subtask of the current phase
             # TODO: need to change this to other starting point when the motion planner is integrated
             start_step = subtask_ind_vals[0]
-            change_role = self.change_arm_role_heuristic(
-                env_interface,
-                start_step,
-                selected_src_demo_ind,
-                cur_phase_task_spec
-                )
+            
+            # Uncomment later. 
+            # change_role = self.change_arm_role_heuristic(
+            #     env_interface,
+            #     start_step,
+            #     selected_src_demo_ind,
+            #     cur_phase_task_spec
+            #     )
+            change_role = False
 
             if change_role:
                 # change the information for two arms
@@ -589,6 +548,12 @@ class DataGenerator(object):
                 all_subtask_inds = all_subtask_inds_new
 
             for subtask_ind_reordered in range(num_subtasks):
+                print("========== Phase {} Subtask {} ==========".format(current_phase_ind, subtask_ind_reordered))
+
+                # # remove later
+                # if current_phase_ind == 1 and subtask_ind_reordered == 1:
+                #     break
+                # breakpoint()
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
@@ -604,12 +569,12 @@ class DataGenerator(object):
                     arm_unique_subtask_inds = np.sort(np.unique(arm_spec_subtask_inds))
                     subtask_ind = np.where(selected_src_subtask_inds[1] <= arm_unique_subtask_inds)[0][0] - 1
 
-                    print('==========================================')
-                    print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
-                    print('subtask start and end step', selected_src_subtask_inds)
-                    print('arm_spec_subtask_inds', arm_spec_subtask_inds)
+                    # print('==========================================')
+                    # print('arm_name:', arm_name, 'subtask_ind_reordered', subtask_ind_reordered, 'subtask_ind:', subtask_ind)
+                    # print('subtask start and end step', selected_src_subtask_inds)
+                    # print('arm_spec_subtask_inds', arm_spec_subtask_inds)
 
-                    is_first_subtask = (subtask_ind == 0) and (phase_ind == 0)
+                    is_first_subtask = (subtask_ind == 0) and (target_phase_ind == 0)
                     is_first_subtask_in_phase = (subtask_ind == 0)
 
                     cur_datagen_info = env_interface.get_datagen_info()
@@ -618,7 +583,7 @@ class DataGenerator(object):
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
                     key_name = arm_name.replace('arm_', '')
                     attached_obj_dict[key_name] = cur_phase_task_spec[arm_i][subtask_ind]["attached_obj"]
-                    MP_end_steps.append(end_step_of_MP_local[phase_ind][arm_i][subtask_ind])
+                    MP_end_steps.append(end_step_of_MP_local[target_phase_ind][arm_i][subtask_ind])
                     
                     # get poses
                     src_ep_datagen_info = self.src_dataset_infos[selected_src_demo_ind]
@@ -627,12 +592,12 @@ class DataGenerator(object):
                     src_subtask_gripper_actions = src_ep_datagen_info.gripper_action[selected_src_subtask_inds[0] : selected_src_subtask_inds[1]] # 106 x 2
 
                     if (arm_name == 'arm_left' and not change_role) or (arm_name == 'arm_right' and change_role):
-                        print('select left arm demo pose')
+                        # print('select left arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,:4,:]
                         # src_subtask_target_poses = src_subtask_target_poses[:,:4,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,:1]
                     elif (arm_name == 'arm_right' and not change_role) or (arm_name == 'arm_left' and change_role):
-                        print('select right arm demo pose')
+                        # print('select right arm demo pose')
                         src_subtask_eef_poses = src_subtask_eef_poses[:,4:,:]
                         # src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
@@ -732,11 +697,11 @@ class DataGenerator(object):
 
                     traj_to_execute = transformed_traj
 
-                    print('*****************************')
-                    print('finished processing one subtask for one arm')
-                    print('num sequences:', len(traj_to_execute.waypoint_sequences))
-                    for seq in traj_to_execute.waypoint_sequences:
-                        print('num waypoints:', len(seq.sequence))
+                    # print('*****************************')
+                    # print('finished processing one subtask for one arm')
+                    # print('num sequences:', len(traj_to_execute.waypoint_sequences))
+                    # for seq in traj_to_execute.waypoint_sequences:
+                    #     print('num waypoints:', len(seq.sequence))
                 
                     traj_list_all[arm_i].append(traj_to_execute)
                 
@@ -753,9 +718,8 @@ class DataGenerator(object):
                     MP_end_steps = MP_end_steps[::-1]
                     # TODO: need to change the attached_obj_dict as well
 
-                print('MP_end_steps', MP_end_steps)
+                # print('MP_end_steps', MP_end_steps)
 
-                # breakpoint()
                 # Execute the trajectory and collect data.
                 exec_results = traj_to_execute.execute(
                     env=env,
@@ -766,15 +730,19 @@ class DataGenerator(object):
                     camera_names=camera_names,
                     bimanual=self.bimanual,
                     cur_subtask_end_step_MP=MP_end_steps,
-                    # attached_obj=attached_obj[phase_ind][subtask_ind_reordered],
+                    # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
                     attached_obj=attached_obj_dict,
                     phase_type=phase_type,
                     object_ref=object_ref,
-                    disable_marker_vis=disable_marker_vis,
+                    enable_marker_vis=enable_marker_vis,
                     ds_ratio=ds_ratio,
+                    grasp_init_views_video_writer=grasp_init_views_video_writer
                 )
+                # To let any remaining simulation steps finish.
+                for _ in range(50): og.sim.step()
+                
                 if exec_results is None:
-                    print('failed to execute the trajectory, breakpoint in data_generator.py')
+                    # print('failed to execute the trajectory, breakpoint in data_generator.py')
                     return None
 
                 # check that trajectory is non-empty
@@ -815,5 +783,5 @@ class DataGenerator(object):
             sensor_info=sensor_info,
         )
         # import pdb; pdb.set_trace()
-        print('before returning the results')
+        # print('before returning the results')
         return results

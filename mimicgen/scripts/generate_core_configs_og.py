@@ -26,12 +26,12 @@ from mimicgen.utils.file_utils import config_generator_to_script_lines
 SRC_DATA_DIR = os.path.join(mimicgen.__path__[0], "../datasets/source_og")
 
 # set base folder for where to copy each base config and generate new config files for data generation
-CONFIG_DIR = "/tmp/core_configs_og"
-CONFIG_DIR = "datasets/core_configs_og"
+# CONFIG_DIR = "/tmp/core_configs_og"
+CONFIG_DIR = os.path.join(mimicgen.__path__[0], "../datasets/generated_data_mimicgen_format/core_configs_og") 
 
 # set base folder for newly generated datasets
-OUTPUT_FOLDER = "/tmp/core_datasets_og"
-OUTPUT_FOLDER = "datasets/core_datasets_og"
+# OUTPUT_FOLDER = "/tmp/core_datasets_og"
+OUTPUT_FOLDER = os.path.join(mimicgen.__path__[0], "../datasets/generated_data_mimicgen_format/core_datasets_og")
 
 # number of trajectories to generate (or attempt to generate)
 NUM_TRAJ = 2
@@ -53,7 +53,9 @@ BASE_CONFIGS = [
 #     os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_giftbox.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_notebook.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_cup.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "test_r1_cup.json"),
+    # os.path.join(BASE_BASE_CONFIG_PATH, "test_r1_cup.json"),
+    # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_single_arm_cup.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_put_away_cup.json"),
 ]
 
 def make_generators(base_configs):
@@ -117,12 +119,34 @@ def make_generators(base_configs):
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         # ),
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_r1_cup.hdf5"),
+        #     dataset_name="test_r1_cup",
+        #     generation_path="{}/test_r1_cup".format(OUTPUT_FOLDER),
+        #     tasks=["test_r1_cup_D0", "test_r1_cup_D1", "test_r1_cup_D2", "test_r1_cup_D3"],
+        #     task_names=["D0", "D1", "D2", "D3"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
+        # ),
+        # dict(
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_single_arm_cup.hdf5"),
+        #     dataset_name="test_tiago_single_arm_cup",   # this will dictate the name of the config file in core_configs_og
+        #     generation_path="{}/test_tiago_single_arm_cup".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+        #     tasks=["test_tiago_single_arm_cup_D0", "test_tiago_single_arm_cup_D1", "test_tiago_single_arm_cup_D2", "test_tiago_single_arm_cup_D3"],
+        #     task_names=["D0", "D1", "D2", "D3"],
+        #     select_src_per_subtask=False,
+        #     selection_strategy="random",
+        #     selection_strategy_kwargs=None,
+        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
+        # ),
         dict(
-            dataset_path=os.path.join(SRC_DATA_DIR, "test_r1_cup.hdf5"),
-            dataset_name="test_r1_cup",
-            generation_path="{}/test_r1_cup".format(OUTPUT_FOLDER),
-            tasks=["test_r1_cup_D0", "test_r1_cup_D1", "test_r1_cup_D2"],
-            task_names=["D0", "D1", "D2"],
+            dataset_path=os.path.join(SRC_DATA_DIR, "r1_put_away_cup.hdf5"),
+            dataset_name="r1_put_away_cup",   # this will dictate the name of the config file in core_configs_og
+            generation_path="{}/r1_put_away_cup".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+            tasks=["r1_put_away_cup_D0", "r1_put_away_cup_D1", "r1_put_away_cup_D2", "r1_put_away_cup_D3"],
+            task_names=["D0", "D1", "D2", "D3"],
             select_src_per_subtask=False,
             selection_strategy="random",
             selection_strategy_kwargs=None,
@@ -159,7 +183,7 @@ def make_generator(config_file, settings):
         guarantee=GUARANTEE,
         num_traj=NUM_TRAJ,
         num_src_demos=10,
-        max_num_failures=25,
+        max_num_failures=None,
         num_demo_to_render=10,
         num_fail_demo_to_render=25,
         render_video=False,
@@ -267,13 +291,13 @@ def main():
     # make config generators
     generators = make_generators(base_configs=BASE_CONFIGS)
 
-    # maybe remove existing config directory
+    # # maybe remove existing config directory
     config_dir = CONFIG_DIR
-    if os.path.exists(config_dir):
-        ans = input("Non-empty dir at {} will be removed.\nContinue (y / n)? \n".format(config_dir))
-        if ans != "y":
-            exit()
-        shutil.rmtree(config_dir)
+    # if os.path.exists(config_dir):
+    #     ans = input("Non-empty dir at {} will be removed.\nContinue (y / n)? \n".format(config_dir))
+    #     if ans != "y":
+    #         exit()
+    #     shutil.rmtree(config_dir)
 
     all_json_files, run_lines = config_generator_to_script_lines(generators, config_dir=config_dir)
 

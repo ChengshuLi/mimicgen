@@ -19,7 +19,11 @@ Args:
 
 import argparse
 import json
+import h5py
 import numpy as np
+np.set_printoptions(precision=3, suppress=True)
+import torch as th
+th.set_printoptions(sci_mode=False, precision=3)
 import time
 import datetime
 import os
@@ -30,7 +34,6 @@ import socket
 import traceback
 import random
 import imageio
-import numpy as np
 from copy import deepcopy
 
 from collections import OrderedDict
@@ -38,6 +41,7 @@ import sys
 from io import StringIO
 
 import torch
+torch.set_printoptions(sci_mode=False, precision=3)
 from torch.utils.data import DataLoader
 
 import robomimic
@@ -89,7 +93,6 @@ def sensor_customize_test_tiago_cup(env):
     print("")
 
     # change the density of the objects
-    import omnigibson as og
     state = og.sim.dump_state()
     og.sim.stop()
 
@@ -108,7 +111,6 @@ def sensor_customize_test_tiago_cup(env):
     env.reset()
     for _ in range(2): og.sim.step()
 
-    import torch as th
     og.sim.viewer_camera.set_position_orientation(
         position=th.tensor([ 1.7492, -0.0424,  1.5371]),
         orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
@@ -186,6 +188,7 @@ def evaluate_w_rollout(config, mg_config, device, args):
     # get environment metadata from dataset
     ds_format = config.train.data_format    # TODO: Why BC-RNN config does not have ds_format?
     env_meta = get_env_metadata_from_dataset(dataset_path=source_dataset_path, ds_format=ds_format)
+    # breakpoint()
 
     # env args: cameras to use come from debug camera video to write, or from observation collection
     envs = OrderedDict()
@@ -212,7 +215,7 @@ def evaluate_w_rollout(config, mg_config, device, args):
 
     if mg_config.experiment.task.name.startswith('test_tiago_cup'):
         env = sensor_customize_test_tiago_cup(env)
-    elif mg_config.experiment.task.name.startswith('test_r1_cup'):
+    elif mg_config.experiment.task.name.startswith('test_r1_cup') or mg_config.experiment.task.name.startswith('test_tiago_single_arm_cup'):
         env.policy_rollout = True
         if "combined::color_point_cloud" in config.all_obs_keys:
             env.with_color = True
@@ -267,24 +270,36 @@ def evaluate_w_rollout(config, mg_config, device, args):
 
     # replay the actions from the demostration to sanity check the demo quality
     replay_from_demo = True
+    use_controller = True
+    # breakpoint()
     if replay_from_demo:
         print("\n============= Start replaying the actions from the demostration =============")
         print("")
         # get one demosntration to help debug the model
         trainset, validset = TrainUtils.load_data_for_training(config, obs_keys=shape_meta["all_obs_keys"])
-        demo_name = trainset.demos[0]
-        demo_actions = trainset.get_action_traj(demo_name)['actions']
+        file_path = "/home/arpit/test_projects/mimicgen/temp_datasets/demo_failed.hdf5"
+        generated_demo_f = h5py.File(file_path, "r")
+        for i in range(20):
+            demo_name = trainset.demos[i]
+            demo_actions = trainset.get_action_traj(demo_name)['actions']
 
-        env.reset()
-        for step in range(demo_actions.shape[0]):
-            ob_dict, r, done, truncated, _ = env.step(demo_actions[step])
-            print("step: {}, reward: {}, done: {}, truncated: {}".format(step, r, done, truncated))
+            init_state = {"states": generated_demo_f["data/demo_{}".format(i)]["states"][0]} 
+            env.reset_to(state=init_state)
             breakpoint()
-            if done:
-                break
-        
-        print('finished policy rollout one episode')
-        breakpoint()
+
+            for step in range(demo_actions.shape[0]):
+                print("step: ", step)
+                if use_controller:
+                    ob_dict, r, done, truncated, _ = env.step(demo_actions[step])
+                    print("step: {}, reward: {}, done: {}, truncated: {}".format(step, r, done, truncated))
+                    if done:
+                        break
+                else:
+                    q = robot.action_to_q(demo_actions[step])
+                    env.env.env.robots[0].set_joint_positions(q)
+                    for _ in range(2): og.sim.step()
+            
+            print('finished policy rollout one episode')
         # exit the python code
         sys.exit()
 
@@ -296,15 +311,14 @@ def evaluate_w_rollout(config, mg_config, device, args):
         print("\n============= Load initial states in the demonstration =============")
         print("")
         # data_name = 'D1_10'
-        data_name = 'D1_64'
-        init_states_all = load_init_states(data_name=data_name)
+        # data_name = 'D1_64'
+        init_states_all = load_init_states()
         init_states_list = []
         for demo_key in init_states_all:
             init_states = {} 
             # random sample a key from the demo 
             init_states["states"] = init_states_all[demo_key]
             init_states_list.append(init_states)
-
 
 
     print("\n============= Start rollout evaluation =============")
@@ -474,7 +488,6 @@ def evaluate_w_rollout(config, mg_config, device, args):
     
     
     if env_meta["type"] == EnvUtils.EB.EnvType.OG_TYPE:
-        import omnigibson as og
         og.shutdown()
 
     return None

@@ -63,8 +63,9 @@ def plot_init_states(file_path, save_path, save_name):
 
 
 def load_init_states(data_name=None):
-    file_path = f'/home/mengdi/dataset/test_tiago_cup/demo_{data_name}.hdf5'
-    file_path = f'/home/mengdi/b1k_datagen/mimicgen/datasets/source_og/test_taigo_cup/demo_{data_name}.hdf5'
+    # file_path = f'/home/mengdi/dataset/test_tiago_cup/demo_{data_name}.hdf5'
+    # file_path = f'/home/mengdi/b1k_datagen/mimicgen/datasets/source_og/test_taigo_cup/demo_{data_name}.hdf5'
+    file_path = "/home/arpit/test_projects/mimicgen/temp_datasets/demo_failed.hdf5"
 
     init_states = {}
     # Open the file

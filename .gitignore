@@ -139,3 +139,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom files and folders
+debug_videos/
+*pickle
+scene_0.json
+temp_datasets/

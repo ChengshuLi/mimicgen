@@ -33,6 +33,13 @@ import random
 import imageio
 import numpy as np
 import torch as th
+th.set_printoptions(precision=3, sci_mode=False)
+import warnings
+warnings.filterwarnings('ignore', module='trimesh')
+import logging
+# Disable all WARNING and below logs from trimesh
+logging.getLogger('trimesh').setLevel(logging.ERROR)
+logging.getLogger('imageio_ffmpeg').setLevel(logging.ERROR)
 
 import robomimic
 from robomimic.utils.file_utils import get_env_metadata_from_dataset
@@ -49,6 +56,52 @@ from mimicgen.env_interfaces.base import make_interface
 import omnigibson as og
 import omnigibson.lazy as lazy
 
+from omnigibson.objects.primitive_object import PrimitiveObject
+
+import os
+os.environ["TRIMESH_NO_PYEMBREE"] = "1"
+
+def visualize_base_poses(env):
+    # ================== Visualization ==================
+    sampled_base_poses = env.sampled_base_poses
+    base_marker_list = []
+    failures = sampled_base_poses["failure"]
+    for i in range(len(failures)):
+        base_marker = PrimitiveObject(
+            relative_prim_path=f"/base_marker_failure_{i}",
+            primitive_type="Cube",
+            name=f"base_marker_failure_{i}",
+            size=th.tensor([0.03, 0.03, 0.03]),
+            visual_only=True,
+            rgba=th.tensor([1, 0, 0, 1])
+        )
+        base_marker_list.append(base_marker)
+    og.sim.batch_add_objects(base_marker_list, [env.env.scene] * len(base_marker_list))
+    for i in range(len(failures)):
+        base_pos = failures[i]
+        base_marker_list[i].set_position_orientation(position=base_pos)
+
+    base_marker_list = []
+    success = sampled_base_poses["success"]
+    for i in range(len(success)):
+        base_marker = PrimitiveObject(
+            relative_prim_path=f"/base_marker_success_{i}",
+            primitive_type="Cube",
+            name=f"base_marker_success_{i}",
+            size=th.tensor([0.03, 0.03, 0.03]),
+            visual_only=True,
+            rgba=th.tensor([0, 1, 0, 1])
+        )
+        base_marker_list.append(base_marker)
+    og.sim.batch_add_objects(base_marker_list, [env.env.scene] * len(base_marker_list))
+    for i in range(len(success)):
+        base_pos = success[i]
+        base_marker_list[i].set_position_orientation(position=base_pos)
+
+    # for _ in range(300): og.sim.step()
+    # breakpoint()
+
+    # # ================== Visualization ==================
 
 def get_important_stats(
     new_dataset_folder_path,
@@ -58,6 +111,7 @@ def get_important_stats(
     num_problematic,
     start_time=None,
     ep_length_stats=None,
+    all_episode_logs=None
 ):
     """
     Return a summary of important stats to write to json.
@@ -84,6 +138,7 @@ def get_important_stats(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
+        all_episode_logs=all_episode_logs
     )
     if (ep_length_stats is not None):
         important_stats.update(ep_length_stats)
@@ -102,7 +157,7 @@ def generate_dataset(
     render_image_names=None,
     pause_subtask=False,
     bimanual=False,
-    disable_marker_vis=False,
+    enable_marker_vis=False,
     ds_ratio=1,
 ):
     """
@@ -129,7 +184,7 @@ def generate_dataset(
     """
 
     # time this run
-    start_time = time.time()
+    script_start_time = time.time()
 
     # check some args
     write_video = (video_path is not None)
@@ -152,6 +207,8 @@ def generate_dataset(
     # set seed for generation
     random.seed(mg_config.experiment.seed)
     np.random.seed(mg_config.experiment.seed)
+    th.manual_seed(mg_config.experiment.seed)
+
 
     # create new folder for this data generation run
     base_folder = os.path.expandvars(os.path.expanduser(mg_config.experiment.generation.path))
@@ -234,14 +291,6 @@ def generate_dataset(
     use_image_obs = ((mg_config.obs.collect_obs and (len(mg_config.obs.camera_names) > 0)) if not write_video else False)
     use_depth_obs = False
 
-    if args.headless:
-        from omnigibson.macros import gm
-        gm.HEADLESS = True
-
-    # TODO: need to remove it, this only works for test_r1_cup task
-    # this is a hack to change the task name to test_r1_cup_D1
-    D_type = mg_config.experiment.task.name.split('_')[-1]
-    mg_config.experiment.task.name = f'test_r1_cup_{D_type}'
 
     # TODO: why here is the robomimicutil, not omnigibsonutil?
     # simulation environment
@@ -310,11 +359,6 @@ def generate_dataset(
     print(data_generator)
     print("")
 
-    # we might write a video to show the data generation attempts
-    video_writer = None
-    if write_video:
-        video_writer = imageio.get_writer(video_path, fps=20)
-
     # data generation statistics
     num_success = 0
     num_failures = 0
@@ -328,25 +372,8 @@ def generate_dataset(
     num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
 
-    # The following are moved to env.customize_physical_properties()
-    # which are changing object or robot specific properites
-    # # Increase gripper friction
-    # state = og.sim.dump_state()
-    # og.sim.stop()
-    # target_friction = 2.0
-    # gripper_mat = lazy.omni.isaac.core.materials.PhysicsMaterial(
-    #     prim_path=f"{env.env.robots[0].prim_path}/gripper_mat",
-    #     name="gripper_material",
-    #     static_friction=target_friction,
-    #     dynamic_friction=target_friction,
-    #     restitution=None,
-    # )
-    # for links in env.env.robots[0].finger_links.values():
-    #     for link in links:
-    #         for msh in link.collision_meshes.values():
-    #             msh.apply_physics_material(gripper_mat)
-    # og.sim.play()
-    # og.sim.load_state(state)
+    # TODO: need to make this specialized for different tasks
+    # including changing the properties of different objects
 
     # notebook = env.env.scene.object_registry("name", "notebook")
     # notebook.links['base_link'].density = 10
@@ -365,15 +392,32 @@ def generate_dataset(
     # og.sim.play()
     # og.sim.load_state(state)
     # for _ in range(10): og.sim.step()
-    # if mg_config.experiment.task.name.startswith("test_r1_cup"):
-    #     breakpoint()
-    #     env.sensor_setup()
-
-    mp_failure_num = 0
+    
+    grasp_init_views_video_writer = None
+    if write_video:
+        run_dir = os.getcwd()
+        os.makedirs(f"{run_dir}/debug_videos/{video_path}", exist_ok=True) 
+        grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
+    
+    base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures = 0, 0, 0, 0, 0, 0
+    obj_visible_at_start_of_manip = 0
+    all_episode_logs = {
+        "episode_number": [],
+        "err_status": [],
+        "time_taken": [],
+        "task_success": [],
+    }
     while True:
+        print(f"======================= ATTEMPT {num_attempts} ========================")
+
+        # we might write a video to show the data generation attempts
+        video_writer = None
+        if write_video:
+            video_writer = imageio.get_writer(f"debug_videos/{video_path}/{num_attempts:04d}.mp4", fps=20)
+
         # generate trajectory
         try:
-            start_time = time.time()
+            episode_start_time = time.time()
             generated_traj = data_generator.generate(
                 env=env,
                 env_interface=env_interface,
@@ -385,12 +429,21 @@ def generate_dataset(
                 video_skip=video_skip,
                 camera_names=render_image_names,
                 pause_subtask=pause_subtask,
-                disable_marker_vis=disable_marker_vis,
+                enable_marker_vis=enable_marker_vis,
                 ds_ratio=ds_ratio,
+                grasp_init_views_video_writer=grasp_init_views_video_writer
             )
+            episode_time_taken = time.time() - episode_start_time
             print("==============================")
-            print("Time taken for generation: {:.2f} seconds".format(time.time() - start_time))
+            print("Time taken for generation: {:.2f} seconds".format(episode_time_taken))
             print("==============================")
+
+            # save episode logs
+            all_episode_logs["episode_number"].append(num_attempts+num_problematic)
+            all_episode_logs["err_status"].append(env.err)
+            all_episode_logs["time_taken"].append(episode_time_taken)
+            all_episode_logs["task_success"].append(env.is_success()["task"])
+
         except exceptions_to_except as e:
             # problematic trajectory - do not have this count towards our total number of attempts, and re-try
             print("")
@@ -398,21 +451,56 @@ def generate_dataset(
             print("WARNING: got rollout exception {}".format(e))
             print("*" * 50)
             print("")
+            
+            episode_time_taken = time.time() - episode_start_time
+            # save episode logs
+            all_episode_logs["episode_number"].append(num_attempts+num_problematic)
+            all_episode_logs["err_status"].append("problematic")
+            all_episode_logs["time_taken"].append(episode_time_taken)
+            all_episode_logs["task_success"].append(False)
+            
             num_problematic += 1
             continue
         
+        num_attempts += 1
+        if write_video:
+            video_writer.close()
+        
+        # breakpoint()
+        if env.err == "BaseMPFailed":
+            base_mp_failures += 1
+        elif env.err == "BaseMPIKFailed":
+            base_mp_ik_failures += 1
+        elif env.err == "ArmMPTrajOptFailed":
+            arm_mp_trajopt_failures += 1
+        elif env.err == "ArmMPIKFailed":
+            arm_mp_ik_failures += 1
+        elif env.err == "BaseSamplingFailed":   
+            base_sampling_failures += 1
+        elif env.err == "ArmMPOtherFailed":
+            arm_mp_other_failures += 1
+        
+        if env.obj_visible_at_start_of_manip:
+            obj_visible_at_start_of_manip += 1
+
         if generated_traj is None:
-            mp_failure_num += 1
-            num_attempts += 1
-            print('Failed to generate trajectory due to motion planner failure')
-            print(f'{mp_failure_num} mp failures out of {num_attempts}' )
+            success = False
+            print("")
+            print("*" * 50)
+            print("trial {} success: {}".format(num_attempts, success))
+            print("have {} successes out of {} trials so far".format(num_success, num_attempts))
+            print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
+            print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
+            print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
+            print("*" * 50)
             continue
 
         # remember selection of source demos for each subtask
         selected_src_demo_inds_all.append(generated_traj["src_demo_inds"])
 
         # check if generated trajectory was successful
-        success = bool(generated_traj["success"])
+        # success = bool(generated_traj["success"])
+        success = env.is_success()["task"]
 
         if success:
             num_success += 1
@@ -432,6 +520,7 @@ def generate_dataset(
                 mp_end_steps=generated_traj["mp_end_steps"],
                 subtask_lengths=generated_traj["subtask_lengths"],
                 sensor_info=generated_traj["sensor_info"],
+                episode_time_taken=episode_time_taken
             )
             selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
@@ -455,15 +544,16 @@ def generate_dataset(
                     mp_end_steps=generated_traj["mp_end_steps"],
                     subtask_lengths=generated_traj["subtask_lengths"],
                     sensor_info=generated_traj["sensor_info"],
+                    episode_time_taken=episode_time_taken
                 )
 
-        num_attempts += 1
         print("")
         print("*" * 50)
         print("trial {} success: {}".format(num_attempts, success))
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} mp_failure_num pout of {} trails so far'.format(mp_failure_num, num_attempts))
+        print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
+        print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
         print("*" * 50)
 
         # regularly log progress to disk every so often
@@ -476,8 +566,9 @@ def generate_dataset(
                 num_failures=num_failures,
                 num_attempts=num_attempts,
                 num_problematic=num_problematic,
-                start_time=start_time,
+                start_time=script_start_time,
                 ep_length_stats=None,
+                all_episode_logs=all_episode_logs,
             )
 
             # write stats to disk
@@ -494,9 +585,13 @@ def generate_dataset(
         if check_val >= num_trials:
             break
 
-    if write_video:
-        video_writer.close()
+    
+    # visualize_base_poses(env)
 
+    # save episode logs
+    with open(os.path.join(new_dataset_folder_path, "episode_logs.json"), "w") as f:
+        json.dump(all_episode_logs, f, indent=4)
+    
     # merge all new created files
     print("\nFinished data generation. Merging per-episode hdf5s together...\n")
     MG_FileUtils.merge_all_hdf5(
@@ -532,7 +627,7 @@ def generate_dataset(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
-        start_time=start_time,
+        start_time=script_start_time,
         ep_length_stats=ep_length_stats,
     )
     print("\nStats Summary")
@@ -575,14 +670,18 @@ def generate_dataset(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
-        start_time=start_time,
+        start_time=script_start_time,
         ep_length_stats=ep_length_stats,
+        all_episode_logs=all_episode_logs,
     )
 
     # write stats to disk
     json_file_path = os.path.join(new_dataset_folder_path, "important_stats.json")
     MG_FileUtils.write_json(json_dic=final_important_stats, json_path=json_file_path)
 
+    if write_video:
+        grasp_init_views_video_writer.close()
+    
     # NOTE: we are not currently saving the choice of source human demonstrations for each trial,
     #       but you can do that if you wish -- the information is stored in @selected_src_demo_inds_all
     #       and @selected_src_demo_inds_succ
@@ -655,7 +754,7 @@ def main(args):
             render_image_names=args.render_image_names,
             pause_subtask=args.pause_subtask,
             bimanual=args.bimanual,
-            disable_marker_vis=args.disable_marker_vis,
+            enable_marker_vis=args.enable_marker_vis,
             ds_ratio=args.ds_ratio,
         )
     except Exception as e:
@@ -755,7 +854,7 @@ if __name__ == "__main__":
         help="whether to generate data in headless mode",
     )
     parser.add_argument(
-        "--disable_marker_vis",
+        "--enable_marker_vis",
         action='store_true',
         help="disable the marker visualization when generating data, the markers are mainly for vis the eef pose and target pose",
     )
