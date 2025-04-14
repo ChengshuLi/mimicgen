@@ -588,6 +588,7 @@ class WaypointTrajectory(object):
                 # if mp_action is None:
                 #     continue
                 
+                init_state = og.sim.dump_state()
                 local_env_step = 0
                 states = []
                 actions = []
@@ -630,6 +631,12 @@ class WaypointTrajectory(object):
                     # for k in success:
                     #     success[k] = success[k] or cur_success_metrics[k]
 
+                # If the base MP was not successful because of collision, reset and try again
+                if not nav_mp_success and env.primitive.mp_err == "BaseCollision":
+                    og.sim.load_state(init_state)
+                    for _ in range(30): og.sim.step()
+                    continue
+                
                 # If the base MP was not successful, try again
                 if not nav_mp_success:
                     continue
@@ -648,6 +655,7 @@ class WaypointTrajectory(object):
                 # # breakpoint()
                 # for _ in range(20): og.sim.step()
                 
+                env.err = env.primitive.mp_err
                 MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
                 results = dict(
                     states=states,

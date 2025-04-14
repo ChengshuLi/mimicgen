@@ -553,7 +553,6 @@ class DataGenerator(object):
                 # # remove later
                 # if current_phase_ind == 1 and subtask_ind_reordered == 1:
                 #     break
-                # breakpoint()
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
