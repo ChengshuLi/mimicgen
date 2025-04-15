@@ -386,7 +386,10 @@ def write_demo_to_hdf5(
     mp_end_steps=None,
     subtask_lengths=None,
     sensor_info=None,
-    episode_time_taken=None
+    episode_time_taken=None,
+    partial=False,
+    left_mp_ranges=None,
+    right_mp_ranges=None,
 ):
     """
     Helper function to write demonstration to an hdf5 file (robomimic format) in a folder. It will be 
@@ -451,6 +454,10 @@ def write_demo_to_hdf5(
         ep_data_grp.create_dataset("src_demo_labels", data=np.array(src_demo_labels))
     if mp_end_steps is not None:
         ep_data_grp.create_dataset("mp_end_steps", data=np.array(mp_end_steps))
+    if left_mp_ranges is not None:
+        ep_data_grp.create_dataset("left_mp_ranges", data=np.array(left_mp_ranges))
+    if right_mp_ranges is not None:
+        ep_data_grp.create_dataset("right_mp_ranges", data=np.array(right_mp_ranges))
     if subtask_lengths is not None:
         ep_data_grp.create_dataset("subtask_lengths", data=np.array(subtask_lengths))
     if sensor_info is not None:
@@ -468,6 +475,7 @@ def write_demo_to_hdf5(
         ep_data_grp.attrs["model_file"] = initial_state["model"] # model xml for this episode
     ep_data_grp.attrs["num_samples"] = actions.shape[0] # number of transitions in this episode
     ep_data_grp.attrs["episode_time_taken"] = episode_time_taken # time taken to complete this episode
+    ep_data_grp.attrs["partial"] = partial # whether this task was partially completed
 
     # global metadata
     data_grp.attrs["total"] = actions.shape[0]

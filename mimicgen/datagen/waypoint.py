@@ -21,6 +21,8 @@ import torch as th
 from mimicgen.utils.misc_utils import hori_concatenate_image
 import omnigibson as og
 
+from scipy.spatial.transform import Rotation as R
+
 class Waypoint(object):
     """
     Represents a single desired 6-DoF waypoint, along with corresponding gripper actuation for this point.
@@ -477,7 +479,6 @@ class WaypointTrajectory(object):
                 success (bool): whether the trajectory successfully solved the task or not
         """
 
-        # breakpoint()
         # If both are not None, set right arm as the reference object
         if object_ref["arm_right"] is None:
             ref_object = object_ref["arm_left"]
@@ -490,6 +491,7 @@ class WaypointTrajectory(object):
         env.primitive._tracking_object = ref_obj
         print("Will track object for this sub-step: ", ref_obj.name)
         robot = env.env.robots[0]
+
         
         # attached object info to nav primitive
         if attached_obj is None:
@@ -595,6 +597,7 @@ class WaypointTrajectory(object):
                 observations = []
                 datagen_infos = []
                 success = {"task": False}
+                init_global_env_step = env.global_env_step
                 # success = {k: False for k in env.is_success()} # success metrics
                 for temp_idx, mp_action in enumerate(action_generator):
                     
@@ -623,6 +626,7 @@ class WaypointTrajectory(object):
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
                     env.step(mp_action, video_writer)
                     local_env_step += 1
+                    env.global_env_step += 1
                     states.append(state)
                     actions.append(mp_action)
                     observations.append(obs)
@@ -632,7 +636,8 @@ class WaypointTrajectory(object):
                     #     success[k] = success[k] or cur_success_metrics[k]
 
                 # If the base MP was not successful because of collision, reset and try again
-                if not nav_mp_success and env.primitive.mp_err == "BaseCollision":
+                # Currently not using this feature. To use this, need to remove the state-action etc. data from the appropriate lists
+                if not nav_mp_success and env.primitive.mp_err == "BaseMPCollision":
                     og.sim.load_state(init_state)
                     for _ in range(30): og.sim.step()
                     continue
@@ -657,6 +662,8 @@ class WaypointTrajectory(object):
                 
                 env.err = env.primitive.mp_err
                 MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
+                left_mp_ranges = [init_global_env_step, env.global_env_step]
+                right_mp_ranges = [init_global_env_step, env.global_env_step]
                 results = dict(
                     states=states,
                     observations=observations,
@@ -665,6 +672,8 @@ class WaypointTrajectory(object):
                     success=bool(success["task"]),
                     mp_end_steps=MP_end_step_local_list,
                     subtask_lengths=local_env_step,
+                    left_mp_ranges=left_mp_ranges,
+                    right_mp_ranges=right_mp_ranges,
                 )
                 # print('mp_end_steps', results['mp_end_steps'])
                 # print('subtask_lengths', results['subtask_lengths'])
@@ -820,7 +829,38 @@ class WaypointTrajectory(object):
                 
                 # Base condition 
                 if arm_mp_trial > 0:
-                    if arm_mp_trial == num_tries or ("IK Fail" in mp_results[0].status.value):
+                    # Trying a hacky way to reduce the IK failure. Basically moving the robot base a bit towards the object. 
+                    # This does not ensure collision-free motion
+                    if "IK Fail" in mp_results[0].status.value:
+                        # TODO: Save this action to the results dict in case it helps
+                        obj_pos = ref_obj.get_position_orientation()[0][:2]
+                        robot_base_pose = env.robot.get_position_orientation()
+                        robot_base_pos = robot_base_pose[0][:2]
+                        vec = obj_pos - robot_base_pos
+                        vec = vec / np.linalg.norm(vec)
+                        for _ in range(10):
+                            joint_pos = env.robot.get_joint_positions()
+                            joint_pos[:2] = joint_pos[:2] + (vec * 0.01)
+                            action = env.robot.q_to_action(joint_pos).cpu().numpy()
+                            # Add gripper actions from the original waypoints (we already checked that they are the same across MP trajectories)
+                            if left_gripper_action is not None:
+                                action[env_interface.gripper_action_dim[0]] = left_gripper_action[0]
+                            if right_gripper_action is not None:
+                                action[env_interface.gripper_action_dim[1]] = right_gripper_action[1]
+                            
+                            state = env.get_state()["states"]
+                            obs, obs_info = env.get_obs_IL()
+                            datagen_info = env_interface.get_datagen_info(action=action)
+                            env.step(action, video_writer)
+                            local_env_step += 1
+                            env.global_env_step += 1
+                            states.append(state)
+                            actions.append(mp_action)
+                            observations.append(obs)
+                            datagen_infos.append(datagen_info)
+                    
+                    # if arm_mp_trial == num_tries or ("IK Fail" in mp_results[0].status.value):
+                    if arm_mp_trial == num_tries:
                         print("Arm MP failed after {} trials. Giving up.".format(num_tries))
                         if "TrajOpt Fail" in mp_results[0].status.value:
                             env.err = "ArmMPTrajOptFailed"
@@ -849,7 +889,7 @@ class WaypointTrajectory(object):
                     enable_finetune_trajopt=True,
                     finetune_attempts=1,
                     return_full_result=True,
-                    success_ratio=1.0,
+                    success_ratio=1.0 / env.primitive._motion_generator.batch_size,
                     attached_obj=attached_obj,
                     attached_obj_scale=attached_obj_scale,
                     emb_sel=emb_sel,
@@ -951,10 +991,8 @@ class WaypointTrajectory(object):
                 right_replay_waypoints = right_replay_waypoints[len(mp_actions):]
 
             assert len(mp_actions) == len(left_eef_poses) == len(right_eef_poses)
-            # print('length of MP actions:', len(mp_actions))
-            # breakpoint()
-            # import pdb; pdb.set_trace()
-            # For each motion planner action, we repeat it 3 times for the controllers to converge
+
+            init_global_env_step = env.global_env_step
             num_repeat = 1
             for i, mp_action in enumerate(mp_actions):
                 for _ in range(num_repeat):
@@ -968,6 +1006,7 @@ class WaypointTrajectory(object):
                         env.eef_goal_marker_left.set_position_orientation(*left_eef_poses[i])
                         env.eef_goal_marker_right.set_position_orientation(*right_eef_poses[i])
                     local_env_step += 1
+                    env.global_env_step += 1
                     states.append(state)
                     actions.append(mp_action)
                     observations.append(obs)
@@ -1008,6 +1047,13 @@ class WaypointTrajectory(object):
             # # ========================================================================================================
 
 
+        # Set the MP ranges to save to hdf5 file
+        left_mp_ranges, right_mp_ranges = None, None
+        if len(left_mp_waypoints) > 0:
+            left_mp_ranges = [init_global_env_step, env.global_env_step]
+        if len(right_mp_waypoints) > 0:
+            right_mp_ranges = [init_global_env_step, env.global_env_step]
+        
         
         MP_end_step_local = copy.deepcopy(local_env_step)
         # left MP points
@@ -1087,6 +1133,7 @@ class WaypointTrajectory(object):
                 env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
             # import pdb; pdb.set_trace()
             local_env_step += 1
+            env.global_env_step += 1
             states.append(state)
             actions.append(replay_action)
             observations.append(obs)
@@ -1197,6 +1244,8 @@ class WaypointTrajectory(object):
             success=bool(success["task"]),
             mp_end_steps=MP_end_step_local_list,
             subtask_lengths=local_env_step,
+            left_mp_ranges=left_mp_ranges,
+            right_mp_ranges=right_mp_ranges,
         )
         # print('mp_end_steps', results['mp_end_steps'])
         # print('subtask_lengths', results['subtask_lengths'])

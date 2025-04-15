@@ -334,7 +334,7 @@ class DataGenerator(object):
                         end_step = self.src_dataset_infos[0].eef_pose.shape[0]
 
                     end_step_of_MP[-1][-1].append(end_step)
-        # print('end_step_of_MP', end_step_of_MP)
+        print('end_step_of_MP', end_step_of_MP)
         return end_step_of_MP
 
     def parse_annotations(self, annotations):
@@ -355,7 +355,8 @@ class DataGenerator(object):
         pause_subtask=False,
         enable_marker_vis=False,
         ds_ratio=1,
-        grasp_init_views_video_writer=None
+        grasp_init_views_video_writer=None,
+        no_partial_tasks=False,
     ):
         """
         Attempt to generate a new demonstration.
@@ -494,6 +495,8 @@ class DataGenerator(object):
         generated_success = False
         generated_src_demo_inds = [] # store selected src demo ind for each subtask in each trajectory
         generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
+        generated_demo_left_mp_ranges = []
+        generated_demo_right_mp_ranges = []
 
         # for left arms first
         for current_phase_ind in range(self.num_phases):
@@ -502,7 +505,7 @@ class DataGenerator(object):
                 break 
             # # remove later
             # if current_phase_ind > 0:
-            #     break
+            #     continue
             
             # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]
@@ -740,9 +743,33 @@ class DataGenerator(object):
                 # To let any remaining simulation steps finish.
                 for _ in range(50): og.sim.step()
                 
+                # This means that the the current subtask in the current phase failed
                 if exec_results is None:
-                    # print('failed to execute the trajectory, breakpoint in data_generator.py')
-                    return None
+                    # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
+                    if not no_partial_tasks and current_phase_ind > 0:
+                        if len(generated_actions) > 0:
+                            generated_actions = np.concatenate(generated_actions, axis=0)
+                            generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
+                        results = dict(
+                            initial_state=new_initial_state,
+                            states=generated_states,
+                            observations=generated_obs,
+                            datagen_infos=generated_datagen_infos,
+                            actions=generated_actions,
+                            success=generated_success,
+                            src_demo_inds=generated_src_demo_inds,
+                            src_demo_labels=generated_src_demo_labels,
+                            mp_end_steps=generated_demo_mp_end_steps,
+                            subtask_lengths=generated_demo_subtask_lengths,
+                            sensor_info=sensor_info,
+                            partial=True,
+                            phases_completed=current_phase_ind, # Not adding 1 here because the current phase failed
+                            left_mp_ranges=generated_demo_left_mp_ranges,
+                            right_mp_ranges=generated_demo_right_mp_ranges,
+                        )
+                        return results
+                    else:
+                        return None
 
                 # check that trajectory is non-empty
                 if len(exec_results["states"]) > 0:
@@ -751,6 +778,10 @@ class DataGenerator(object):
                     generated_datagen_infos += exec_results["datagen_infos"]
                     generated_actions.append(exec_results["actions"])
                     generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
+                    if exec_results["left_mp_ranges"] is not None:
+                        generated_demo_left_mp_ranges.append(exec_results["left_mp_ranges"])
+                    if exec_results["right_mp_ranges"] is not None:
+                        generated_demo_right_mp_ranges.append(exec_results["right_mp_ranges"])
                     generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
                     generated_success = generated_success or exec_results["success"]
                     generated_src_demo_inds.append(selected_src_demo_ind)
@@ -780,6 +811,10 @@ class DataGenerator(object):
             mp_end_steps=generated_demo_mp_end_steps,
             subtask_lengths=generated_demo_subtask_lengths,
             sensor_info=sensor_info,
+            partial=False,
+            phases_completed=current_phase_ind+1,
+            left_mp_ranges=generated_demo_left_mp_ranges,
+            right_mp_ranges=generated_demo_right_mp_ranges,
         )
         # import pdb; pdb.set_trace()
         # print('before returning the results')

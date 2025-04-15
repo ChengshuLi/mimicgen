@@ -159,6 +159,7 @@ def generate_dataset(
     bimanual=False,
     enable_marker_vis=False,
     ds_ratio=1,
+    no_partial_tasks=False,
 ):
     """
     Main function to collect a new dataset with MimicGen.
@@ -406,6 +407,7 @@ def generate_dataset(
         "err_status": [],
         "time_taken": [],
         "task_success": [],
+        "phases_completed": [],
     }
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
@@ -431,18 +433,24 @@ def generate_dataset(
                 pause_subtask=pause_subtask,
                 enable_marker_vis=enable_marker_vis,
                 ds_ratio=ds_ratio,
-                grasp_init_views_video_writer=grasp_init_views_video_writer
+                grasp_init_views_video_writer=grasp_init_views_video_writer,
+                no_partial_tasks=no_partial_tasks,
             )
             episode_time_taken = time.time() - episode_start_time
             print("==============================")
             print("Time taken for generation: {:.2f} seconds".format(episode_time_taken))
             print("==============================")
+            # breakpoint()
 
             # save episode logs
             all_episode_logs["episode_number"].append(num_attempts+num_problematic)
             all_episode_logs["err_status"].append(env.err)
             all_episode_logs["time_taken"].append(episode_time_taken)
             all_episode_logs["task_success"].append(env.is_success()["task"])
+            if generated_traj is not None:
+                all_episode_logs["phases_completed"].append(generated_traj["phases_completed"])
+            else:
+                all_episode_logs["phases_completed"].append(-1)
 
         except exceptions_to_except as e:
             # problematic trajectory - do not have this count towards our total number of attempts, and re-try
@@ -458,6 +466,7 @@ def generate_dataset(
             all_episode_logs["err_status"].append("problematic")
             all_episode_logs["time_taken"].append(episode_time_taken)
             all_episode_logs["task_success"].append(False)
+            all_episode_logs["phases_completed"].append(-1)
             
             num_problematic += 1
             continue
@@ -483,8 +492,11 @@ def generate_dataset(
         if env.obj_visible_at_start_of_manip:
             obj_visible_at_start_of_manip += 1
 
+        # generated_traj will be None if a) the 0th phase of the trajectory failed due to MP or b) no_partial_tasks is True meaning that any MP failure in any phase
+        # is considered a failure and is not saved in either the success or failure hdf5 file.
         if generated_traj is None:
             success = False
+            num_failures += 1
             print("")
             print("*" * 50)
             print("trial {} success: {}".format(num_attempts, success))
@@ -520,7 +532,10 @@ def generate_dataset(
                 mp_end_steps=generated_traj["mp_end_steps"],
                 subtask_lengths=generated_traj["subtask_lengths"],
                 sensor_info=generated_traj["sensor_info"],
-                episode_time_taken=episode_time_taken
+                episode_time_taken=episode_time_taken,
+                partial=generated_traj["partial"],
+                left_mp_ranges=generated_traj["left_mp_ranges"],
+                right_mp_ranges=generated_traj["right_mp_ranges"],
             )
             selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
@@ -544,7 +559,10 @@ def generate_dataset(
                     mp_end_steps=generated_traj["mp_end_steps"],
                     subtask_lengths=generated_traj["subtask_lengths"],
                     sensor_info=generated_traj["sensor_info"],
-                    episode_time_taken=episode_time_taken
+                    episode_time_taken=episode_time_taken,
+                    partial=generated_traj["partial"],
+                    left_mp_ranges=generated_traj["left_mp_ranges"],
+                    right_mp_ranges=generated_traj["right_mp_ranges"],
                 )
 
         print("")
@@ -756,6 +774,7 @@ def main(args):
             bimanual=args.bimanual,
             enable_marker_vis=args.enable_marker_vis,
             ds_ratio=args.ds_ratio,
+            no_partial_tasks=args.no_partial_tasks,
         )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
@@ -863,6 +882,11 @@ if __name__ == "__main__":
         type=int,
         help="downsample rate for the replay data",
         default=None,
+    )
+    parser.add_argument(
+        "--no_partial_tasks",
+        action='store_true',
+        help="disable the marker visualization when generating data, the markers are mainly for vis the eef pose and target pose",
     )
 
     args = parser.parse_args()
