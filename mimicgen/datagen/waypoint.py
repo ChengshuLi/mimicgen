@@ -855,7 +855,7 @@ class WaypointTrajectory(object):
                             local_env_step += 1
                             env.global_env_step += 1
                             states.append(state)
-                            actions.append(mp_action)
+                            actions.append(action)
                             observations.append(obs)
                             datagen_infos.append(datagen_info)
                     

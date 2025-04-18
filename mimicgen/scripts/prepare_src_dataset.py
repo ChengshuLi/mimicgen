@@ -231,6 +231,7 @@ def prepare_src_dataset_new(
     filter_key=None,
     n=None,
     output_path=None,
+    save_dataset=False
 ):
     """
     Adds DatagenInfo object instance for each timestep in each source demonstration trajectory
@@ -256,7 +257,7 @@ def prepare_src_dataset_new(
     # maybe write to new file instead of modifying existing file in-place
     if output_path is not None:
         shutil.copy(dataset_path, output_path)
-        dataset_path = output_path
+        # dataset_path = output_path
 
     if env_interface_type == "omnigibson" or env_interface_type == "omnigibson_bimanual":
         FileUtils.preprocess_omnigibson_dataset(dataset_path)
@@ -296,15 +297,22 @@ def prepare_src_dataset_new(
         n=n,
     )
 
+    # Only playback the demos filtered by the filter_key
+    if filter_key is not None:
+        demo_ids = [int(demo.split("_")[-1]) for demo in demos]
+
     print("File that will be modified with datagen info: {}".format(dataset_path))
 
-    all_datagen_info = env.playback_dataset(record_data=False, callback=env_interface.get_datagen_info)
+    all_datagen_info = env.playback_dataset(record_data=False, callback=env_interface.get_datagen_info, demo_ids=demo_ids)
 
     env.input_hdf5.close()
-    breakpoint()
+    
+    if not save_dataset:
+        print("Not saving the dataset. Only used to visualize the collected demo")
+        return
 
     # open file to modify it
-    f = h5py.File(dataset_path, "a")
+    f = h5py.File(output_path, "a")
 
     for ind in tqdm(range(len(demos))):
         ep = demos[ind]
@@ -389,6 +397,11 @@ if __name__ == "__main__":
         default=None,
         help="(optional) path to output hdf5 dataset, instead of modifying existing dataset in-place",
     )
+    parser.add_argument(
+        "--save",
+        action='store_true',
+        help="if not passed, don't save the dataset. Only used to visualize the collected demo",
+    )
 
     args = parser.parse_args()
     prepare_src_dataset_new(
@@ -398,4 +411,5 @@ if __name__ == "__main__":
         filter_key=args.filter_key,
         n=args.n,
         output_path=args.output,
+        save_dataset=args.save,
     )

@@ -875,7 +875,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--enable_marker_vis",
         action='store_true',
-        help="disable the marker visualization when generating data, the markers are mainly for vis the eef pose and target pose",
+        help="enable the marker visualization when generating data, the markers are mainly for vis the eef pose and target pose",
     )
     parser.add_argument(
         "--ds_ratio",
