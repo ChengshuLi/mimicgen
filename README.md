@@ -1,8 +1,10 @@
 # MimicGen
 
 ### commands
+Generating data:
 1. python mimicgen/scripts/generate_dataset.py --config datasets/generated_data_mimicgen_format/core_configs_og/demo_src_temp_r1_task_D2.json --auto-remove-exp --num_demos 200 --bimanual --seed 2 --video_path temp
 
+Training:
 remove the split ratio in case you don't want anything in the validation set
 2. python mimicgen/train_scripts/train_prep_data.py --file_path /tmp/core_datasets_og/test_tiago_single_arm_cup/demo_src_test_tiago_single_arm_cup_task_D1/demo_failed.hdf5 --output_path datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_D1_ds.hdf5 --split_ratio 0.0 --num_pcd_samples 4096 --fps --vis_sign --with_color
 
@@ -11,13 +13,28 @@ remove the split ratio in case you don't want anything in the validation set
 4. python mimicgen/train_scripts/eval_mimicgen.py --config logs/test_tiago_single_arm_cup_pick/20250322184759/config.json --mg_config mimicgen/train_scripts/mg_configs/demo_src_test_tiago_single_arm_cup_task_D1.json --load_checkpoint_folder logs/test_tiago_single_arm_cup_pick/20250322184759 --eval_start_epoch 50 --single_epoch 1650 --eval_on_train_init_states
 
 ### Pipeline:
-0. Follow the documentationt that Eric created
-1. To change the folder where MoMaGen generated data is saved, change "dataset_name" and "generation_path" in generate_core_configs_og.py
-2. To change task name, change "tasks"
-3. Also remember to use the correct json file in the list BASE_CONFIGS in generate_core_configs_og.py 
-4. run: python mimicgen/scripts/generate_core_configs_og.py
-5. For Tiago ensure that self.single_arm = True in env_omnigibson.py script
+0. Obtain the OG dataset (should have the following keys: ['action', 'state', 'state_size', 'reward', 'terminated', 'truncated', 'init_metadata']) and save it in
+/home/arpit/test_projects/OmniGibson/teleop_collected_data/
 
+1. Create a json file: 'mimicgen/mimicgen/exps/templates/omnigibson/{task_name}.json'
+
+2. Run playback to visualize the collected data: (Use this to annotate the subtasks and MP end steps)
+python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --episode_num 1
+
+3. Add datagen key to this hdf5 file: 
+python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --save --output /home/arpit/test_projects/mimicgen/datasets/source_og/r1_tidy_table.hdf5 --episode_num 1
+
+
+4. If this is a new task, follow the "Mimicgen relevant config files"
+
+5. generating the configs for datagen:
+a. To change the folder where MoMaGen generated data is saved, change "dataset_name" and "generation_path" in generate_core_configs_og.py
+b. To change task name, change "tasks"
+c. Also remember to use the correct json file in the list BASE_CONFIGS in generate_core_configs_og.py 
+d. run: python mimicgen/scripts/generate_core_configs_og.py
+e. For Tiago ensure that self.single_arm = True in env_omnigibson.py script
+
+6. save the relevant scene json file here: /home/arpit/test_projects/OmniGibson/omnigibson/data/og_dataset/scenes/house_single_floor/json/
 
 ### For installation:
 1. mimicgen installation on its homepage
@@ -37,19 +54,6 @@ remove the split ratio in case you don't want anything in the validation set
 ### Mimicgen relevant config files:
 1. mimicgen/mimicgen/env_interfaces/omnigibson.py
 2. mimicgen/mimicgen/configs/omnigibson.py
-
-
-before clip torso_joint1 type RevoluteJoint limit: tensor(-1.134, device='cuda:0') tensor(1.833, device='cuda:0')
-after clip torso_joint1 type RevoluteJoint limit: tensor(0.424, device='cuda:0') tensor(0.724, device='cuda:0')
-
-before clip torso_joint2 type RevoluteJoint limit: tensor(-2.793, device='cuda:0') tensor(2.531, device='cuda:0')
-after clip torso_joint2 type RevoluteJoint limit: tensor(-2.847, device='cuda:0') tensor(-0.947, device='cuda:0')
-
-before clip torso_joint3 type RevoluteJoint limit: tensor(-2.094, device='cuda:0') tensor(1.833, device='cuda:0')
-after clip torso_joint3 type RevoluteJoint limit: tensor(-1.524, device='cuda:0') tensor(-0.424, device='cuda:0')
-
-before clip torso_joint4 type RevoluteJoint limit: tensor(-3.054, device='cuda:0') tensor(3.054, device='cuda:0')
-after clip torso_joint4 type RevoluteJoint limit: tensor(-0.540, device='cuda:0') tensor(0.540, device='cuda:0')
 
 
 
