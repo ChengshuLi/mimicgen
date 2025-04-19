@@ -297,6 +297,7 @@ def prepare_src_dataset_new(
         n=n,
     )
 
+    demo_ids = None
     # Only playback the demos filtered by the filter_key
     if filter_key is not None:
         demo_ids = [int(demo.split("_")[-1]) for demo in demos]

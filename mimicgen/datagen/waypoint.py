@@ -492,7 +492,7 @@ class WaypointTrajectory(object):
         print("Will track object for this sub-step: ", ref_obj.name)
         robot = env.env.robots[0]
 
-        
+
         # attached object info to nav primitive
         if attached_obj is None:
             env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
@@ -563,14 +563,13 @@ class WaypointTrajectory(object):
             base_mp_trial = 0
             nav_mp_success = False
             while True:
-                
-                # Base condition 
+                # Base condition
                 if base_mp_trial == num_tries:
                     print("Base MP failed after {} trials. Giving up.".format(num_tries))
                     env.err = env.primitive.mp_err
                     # env.valid_env = env.primitive.valid_env
                     return None
-                
+
                 print("Base MP trial: ", base_mp_trial)
                 
                 # Pass only the eef that has a reference object associated with it (i.e. the arm that is relevant for this sub-step)
@@ -601,7 +600,10 @@ class WaypointTrajectory(object):
                 # success = {k: False for k in env.is_success()} # success metrics
                 for temp_idx, mp_action in enumerate(action_generator):
                     
-                    # This will happen if the base sampling fails or if base MP fails.
+                    # This will happen if
+                    # 1. base sampling fails
+                    # 2. base MP fails.
+                    # 3. base execution fails to converge
                     if mp_action is None:
                         print(f"Base MP trial {base_mp_trial} failed. Retrying...")
                         base_mp_trial += 1
@@ -635,15 +637,17 @@ class WaypointTrajectory(object):
                     # for k in success:
                     #     success[k] = success[k] or cur_success_metrics[k]
 
-                # If the base MP was not successful because of collision, reset and try again
-                # Currently not using this feature. To use this, need to remove the state-action etc. data from the appropriate lists
-                if not nav_mp_success and env.primitive.mp_err == "BaseMPCollision":
-                    og.sim.load_state(init_state)
-                    for _ in range(30): og.sim.step()
-                    continue
-                
-                # If the base MP was not successful, try again
                 if not nav_mp_success:
+                    # This will happen if
+                    # 1. base sampling fails
+                    # 2. base MP fails.
+                    # 3. base execution fails to converge
+
+                    # In case #3, we actually step physics in OG, so we need to reset the state
+                    if env.primitive.mp_err in ["BaseExecutionBaseTargetNotReached", "BaseExecutionArmTorsoTargetNotReached"]:
+                        og.sim.load_state(init_state)
+                        for _ in range(5): og.sim.step()
+
                     continue
                 
                 # # Look at the object

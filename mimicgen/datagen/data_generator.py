@@ -406,9 +406,10 @@ class DataGenerator(object):
         """
 
         # sample new task instance
-        env.customize_physical_properties() # change physical properties of the objects and robot for each task 
+        # env.customize_physical_properties() # change physical properties of the objects and robot for each task
         env.reset()
         new_initial_state = env.get_state()
+        # print("new episode start")
         # breakpoint()
 
         # TODO: need to reinfine the following function, the function is to make sure the robot is not in contact with the objects at the beginning
