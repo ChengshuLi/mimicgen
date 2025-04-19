@@ -18,7 +18,7 @@ Add --filter_key use in case want to use selected demos for data gen
 
 3. Add datagen key to this hdf5 file: 
 
-Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --save --output /home/arpit/test_projects/mimicgen/datasets/source_og/r1_tidy_table.hdf5 --episode_num 1
+Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --save --output /home/arpit/test_projects/mimicgen/datasets/source_og/r1_tidy_table.hdf5 --filter_key use
 
 Add --filter_key use in case want to use selected demos for data gen
 

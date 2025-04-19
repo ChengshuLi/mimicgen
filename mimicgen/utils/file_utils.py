@@ -461,8 +461,10 @@ def write_demo_to_hdf5(
     if subtask_lengths is not None:
         ep_data_grp.create_dataset("subtask_lengths", data=np.array(subtask_lengths))
     if sensor_info is not None:
-        for k2 in sensor_info:            
-            ep_data_grp.create_dataset("sensor_info/{}".format(k2), data=np.array(sensor_info[k2]))
+        for sensor in sensor_info:
+        #     ep_data_grp.create_group(sensor)
+            for k2 in sensor_info[sensor]:            
+                ep_data_grp.create_dataset(f"sensor_info/{sensor}/{k2}", data=np.array(sensor_info[sensor][k2]))
     
     # todo: has bug in it
     # if external_sensor_info is not None:

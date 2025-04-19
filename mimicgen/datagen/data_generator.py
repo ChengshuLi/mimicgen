@@ -409,7 +409,8 @@ class DataGenerator(object):
         # env.customize_physical_properties() # change physical properties of the objects and robot for each task
         env.reset()
         new_initial_state = env.get_state()
-        # print("new episode start")
+        
+        
         # breakpoint()
 
         # TODO: need to reinfine the following function, the function is to make sure the robot is not in contact with the objects at the beginning
@@ -447,8 +448,6 @@ class DataGenerator(object):
         #     breakpoint()
 
         # set camera postion
-        import omnigibson as og
-        import torch as th
         # og.sim.viewer_camera.set_position_orientation(
         #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
         #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
@@ -507,6 +506,11 @@ class DataGenerator(object):
             # # remove later
             # if current_phase_ind > 0:
             #     continue
+
+            # for debugging
+            if env.manipulation_only:
+                if current_phase_ind == 0:
+                    continue
             
             # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]
