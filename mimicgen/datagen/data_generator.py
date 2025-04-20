@@ -410,9 +410,6 @@ class DataGenerator(object):
         env.reset()
         new_initial_state = env.get_state()
         
-        
-        # breakpoint()
-
         # TODO: need to reinfine the following function, the function is to make sure the robot is not in contact with the objects at the beginning
         # # # check collisions between robot and all other objects
         # # print('breakpoint before collision check')
@@ -503,6 +500,7 @@ class DataGenerator(object):
             # Don't execute rest of the phases if any of the previous phases failed (mostly due to failure in MP)
             if not env.valid_env:
                 break 
+            
             # # remove later
             # if current_phase_ind > 0:
             #     continue

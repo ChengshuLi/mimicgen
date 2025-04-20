@@ -13,7 +13,7 @@ import numpy as np
 
 # # 3. generated data from momagen in MimicGen format
 # f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/temp2/demo_src_r1_put_away_cup_task_D2/tmp_failed/date_04_15_2025_time_16_52_23.hdf5", "r")
-f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup/demo_src_r1_pick_cup_task_D0/demo.hdf5")
+# f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup/demo_src_r1_pick_cup_task_D0/demo.hdf5")
 
 # # 4. generated data from momagen in Robomimic format
 # f4 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_floor_filtering_fps_4096_color.hdf5", "r")
@@ -38,54 +38,54 @@ breakpoint()
 # # # ============================================
     
 
-# ============ Obtain stats from data gen ==============
+# # ============ Obtain stats from data gen ==============
 
-file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup/demo_src_r1_pick_cup_task_D0/logs/attempt_0000300_succ_254_rate_84.67.json"
-with open(file_path, 'r') as f:
-    data = json.load(f)
-breakpoint()
+# file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup/demo_src_r1_pick_cup_task_D0/logs/attempt_0000300_succ_254_rate_84.67.json"
+# with open(file_path, 'r') as f:
+#     data = json.load(f)
+# breakpoint()
 
-# # Obtain episodes that have task failures (no MP failure)
-for idx in range(len(data["all_episode_logs"]["episode_number"])):
-    if not data["all_episode_logs"]["task_success"][idx] and data["all_episode_logs"]["err_status"][idx] == "None":
-        print("idx: ", idx)
+# # # Obtain episodes that have task failures (no MP failure)
+# for idx in range(len(data["all_episode_logs"]["episode_number"])):
+#     if not data["all_episode_logs"]["task_success"][idx] and data["all_episode_logs"]["err_status"][idx] == "None":
+#         print("idx: ", idx)
 
-# Obtain time taken for ep with no MP failure
-lis = list()
-for idx in range(len(data["all_episode_logs"]["episode_number"])):
-    if data["all_episode_logs"]["err_status"][idx] == "None":
-        # print("idx: ", idx, data["all_episode_logs"]["err_status"][idx])
-        lis.append(data["all_episode_logs"]["time_taken"][idx])
-print("mean time taken for ep with no MP failure: ", statistics.mean(lis))
-print("median time taken for ep with no MP failure: ", statistics.median(lis))
+# # Obtain time taken for ep with no MP failure
+# lis = list()
+# for idx in range(len(data["all_episode_logs"]["episode_number"])):
+#     if data["all_episode_logs"]["err_status"][idx] == "None":
+#         # print("idx: ", idx, data["all_episode_logs"]["err_status"][idx])
+#         lis.append(data["all_episode_logs"]["time_taken"][idx])
+# print("mean time taken for ep with no MP failure: ", statistics.mean(lis))
+# print("median time taken for ep with no MP failure: ", statistics.median(lis))
 
-print(" ======================== ")
-# Obtain time taken for ep with MP failure
-lis = list()
-for idx in range(len(data["all_episode_logs"]["episode_number"])):
-    if data["all_episode_logs"]["err_status"][idx] != "None":
-        # print("idx: ", idx, data["all_episode_logs"]["err_status"][idx])
-        lis.append(data["all_episode_logs"]["time_taken"][idx])
-print("mean time taken for ep with MP failure: ", statistics.mean(lis))
-print("median time taken for ep with MP failure: ", statistics.median(lis))
+# print(" ======================== ")
+# # Obtain time taken for ep with MP failure
+# lis = list()
+# for idx in range(len(data["all_episode_logs"]["episode_number"])):
+#     if data["all_episode_logs"]["err_status"][idx] != "None":
+#         # print("idx: ", idx, data["all_episode_logs"]["err_status"][idx])
+#         lis.append(data["all_episode_logs"]["time_taken"][idx])
+# print("mean time taken for ep with MP failure: ", statistics.mean(lis))
+# print("median time taken for ep with MP failure: ", statistics.median(lis))
 
-# ==================================================================    
+# # ==================================================================    
 
 
-# =================== Merge hdf5 files ==========================
-import mimicgen.utils.file_utils as MG_FileUtils
-MG_FileUtils.merge_all_hdf5(
-    folder=tmp_dataset_folder_path,
-    new_hdf5_path=new_dataset_path,
-    delete_folder=True,
-)
-if mg_config.experiment.generation.keep_failed:
-    MG_FileUtils.merge_all_hdf5(
-        folder=tmp_dataset_failed_folder_path,
-        new_hdf5_path=new_failed_dataset_path,
-        delete_folder=True,
-    )
-# ===============================================================
+# # =================== Merge hdf5 files ==========================
+# import mimicgen.utils.file_utils as MG_FileUtils
+# MG_FileUtils.merge_all_hdf5(
+#     folder=tmp_dataset_folder_path,
+#     new_hdf5_path=new_dataset_path,
+#     delete_folder=True,
+# )
+# if mg_config.experiment.generation.keep_failed:
+#     MG_FileUtils.merge_all_hdf5(
+#         folder=tmp_dataset_failed_folder_path,
+#         new_hdf5_path=new_failed_dataset_path,
+#         delete_folder=True,
+#     )
+# # ===============================================================
 
 
 # combine multiple videos into one
