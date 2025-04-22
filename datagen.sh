@@ -17,7 +17,6 @@ OMNIGIBSON_HEADLESS=1 python mimicgen/scripts/generate_dataset.py \
     --config datasets/generated_data_mimicgen_format/core_configs_og/demo_src_r1_pick_cup_task_D$DR.json \
     --num_demos $NUM_DEMOS \
     --bimanual \
-    --headless \
     --auto-remove-exp \
     --folder datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup_worker_$WORKER_ID \
     --seed $WORKER_ID
