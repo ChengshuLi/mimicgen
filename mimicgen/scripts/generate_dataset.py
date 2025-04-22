@@ -211,9 +211,6 @@ def generate_dataset(
     np.random.seed(mg_config.experiment.seed)
     th.manual_seed(mg_config.experiment.seed)
 
-    if headless:
-        os.environ["OMNIGIBSON_HEADLESS"] = "1"
-
     # create new folder for this data generation run
     base_folder = os.path.expandvars(os.path.expanduser(mg_config.experiment.generation.path))
     new_dataset_folder_name = mg_config.experiment.name
