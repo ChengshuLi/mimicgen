@@ -8,7 +8,7 @@
 
 NUM_DEMOS=50
 DR=0
-WORKER_ID=0
+WORKER_ID=$1
 
 cd /cvgl2/u/chengshu/anaconda3/bin
 source activate ../envs/omnigibson-test
