@@ -1,4 +1,4 @@
-# MimicGen
+# MoMaGen
 
 ### Pipeline:
 0. Obtain the OG dataset (should have the following keys: ['action', 'state', 'state_size', 'reward', 'terminated', 'truncated', 'init_metadata']) and save it in
@@ -9,23 +9,23 @@ Note:
 a. specify filter key if using specific demos from human collected demo
 b. use the following script to obtain the MP and subtask end steps 
 c. specify the ref objects
+d. specify the attached objects
 
-2. Run playback to visualize the collected data: (Use this to annotate the subtasks and MP end steps)
+2. If this is a new task, update the following files with this new task (similar to other tasks present in these files)
+a. mimicgen/mimicgen/env_interfaces/omnigibson.py
+b. mimicgen/mimicgen/configs/omnigibson.py
+
+3. Run playback to visualize the collected data: (Use this to annotate the subtasks and MP end steps)
 
 Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual 
 
 Add --filter_key use in case want to use selected demos for data gen
 
-3. Add datagen key to this hdf5 file: 
+4. Add datagen key to this hdf5 file: 
 
-Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --save --output /home/arpit/test_projects/mimicgen/datasets/source_og/r1_tidy_table.hdf5 --filter_key use
+Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_tidy_table.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --save --output /home/arpit/test_projects/mimicgen/datasets/source_og/r1_tidy_table.hdf5 --filter_key use
 
 Add --filter_key use in case want to use selected demos for data gen
-
-
-4. If this is a new task, update the following files with this new task (similar to other tasks present in these files)
-a. mimicgen/mimicgen/env_interfaces/omnigibson.py
-b. mimicgen/mimicgen/configs/omnigibson.py
 
 
 5. generating the configs for datagen:

@@ -802,22 +802,25 @@ class WaypointTrajectory(object):
                 del target_pos["left_eef_link"]
                 del target_quat["left_eef_link"]
 
-            # Check object visibility at start-of-manip step
-            try:
-                obs, obs_info = env.get_observation()
-                seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
-                seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
-                key_of_coffee_cup = next((key for key, value in seg_instance_info.items() if value == "coffee_cup"), None)
-                if key_of_coffee_cup is None:
-                    count = 0
-                else:
-                    count = (seg_instance == key_of_coffee_cup).sum().item()
-                if count > 150:
-                    env.obj_visible_at_start_of_manip = True
-            except Exception as e:
-                breakpoint()
+            # # Check object visibility at start-of-manip step
+            # try:
+            #     obs, obs_info = env.get_observation()
+            #     seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
+            #     seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
+            #     key_of_coffee_cup = next((key for key, value in seg_instance_info.items() if value == "coffee_cup"), None)
+            #     if key_of_coffee_cup is None:
+            #         count = 0
+            #     else:
+            #         count = (seg_instance == key_of_coffee_cup).sum().item()
+            #     if count > 150:
+            #         env.obj_visible_at_start_of_manip = True
+            # except Exception as e:
+            #     breakpoint()
 
             
+            # This is for retract behavior
+            initial_left_eef_pose = robot.get_eef_pose("left")
+            initial_right_eef_pose = robot.get_eef_pose("right")
             print("ARM MP START")
             eyes_target_pos, eyes_target_quat = None, None
             if env.enable_head_tracking:
@@ -1240,6 +1243,111 @@ class WaypointTrajectory(object):
         #         for k in success:
         #             success[k] = success[k] or cur_success_metrics[k]
 
+        # === If there is a navigate in the next segment and the current segment is not bimanual-coordinated, take arm to retract pose ===
+        if object_ref["arm_right"] is None:
+            arm_side = "left"
+            current_left_eef_pose = robot.get_eef_pose("left")
+            target_pos = {"left_eef_link": initial_left_eef_pose[0]}
+            target_quat = {"left_eef_link": current_left_eef_pose[1]} # Retain current orientation
+        elif object_ref["arm_left"] is None:
+            arm_side = "right"
+            current_right_eef_pose = robot.get_eef_pose("right")
+            target_pos = {"right_eef_link": initial_right_eef_pose[0]}
+            target_quat = {"right_eef_link": current_right_eef_pose[1]} # Retain current orientation
+        # TODO: implement this
+        else:
+            pass
+
+        # Aggregate target_pos and target_quat to match batch_size
+        new_target_pos = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_pos.items()}
+        new_target_quat = {
+            k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()
+        }
+
+        is_grasping = env.robot.custom_is_grasping(arm=arm_side)
+        grasp_action = 1.0
+        if is_grasping: 
+            grasp_action = -1.0 
+            attached_obj = {f"{arm_side}_eef_link": ref_obj.root_link}
+            attached_obj_scale = {f"{arm_side}_eef_link": 0.9}
+        else:
+            attached_obj = {}
+            attached_obj_scale = {}
+
+        if enable_marker_vis:
+            if arm_side == "left":
+                env.eef_goal_marker_left.set_position_orientation(target_pos["left_eef_link"], target_quat["left_eef_link"])
+            elif arm_side == "right":
+                env.eef_goal_marker_right.set_position_orientation(target_pos["right_eef_link"], target_quat["right_eef_link"])
+        
+        # breakpoint()
+        # Generate collision-free trajectories to the sampled eef poses (including self-collisions)
+        mp_results, traj_paths = env.cmg.compute_trajectories(
+            target_pos=new_target_pos,
+            target_quat=new_target_quat,
+            is_local=False,
+            max_attempts=50,
+            timeout=60.0,
+            ik_fail_return=50,
+            enable_finetune_trajopt=True,
+            finetune_attempts=1,
+            return_full_result=True,
+            success_ratio=1.0 / env.primitive._motion_generator.batch_size,
+            attached_obj=attached_obj, # FIXME: This is currently assuming that after MP and replay, the object will remain attached. This is untrue.
+            attached_obj_scale=attached_obj_scale,
+            emb_sel=emb_sel,
+        )
+
+        successes = mp_results[0].success 
+        print("Arm MP successes: ", successes)
+        success_idx = th.where(successes)[0].cpu()
+
+        if len(success_idx) == 0:
+            print(f"Arm MP trial {arm_mp_trial} failed with status {mp_results[0].status}. Retrying...")
+            if "TrajOpt Fail" in mp_results[0].status.value:
+                env.err = "ArmMPTrajOptFailed"
+            elif "IK Fail" in mp_results[0].status.value:
+                env.err = "ArmMPIKFailed"
+            else:
+                env.err = "ArmMPOtherFailed"
+            env.valid_env = False 
+            return None
+        else:
+            traj_path = traj_paths[success_idx[0]]
+
+        q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
+        q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
+        q_traj = q_traj.cpu()
+
+        num_repeat = 1
+        init_left_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
+        init_right_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
+        for j_pos in q_traj:
+            mp_action = robot.q_to_action(j_pos).cpu().numpy()
+            if arm_side == "left":
+                mp_action[robot.gripper_action_idx["left"]] = grasp_action
+                mp_action[robot.arm_action_idx["right"]] = init_right_arm_pos
+            elif arm_side == "right":
+                mp_action[robot.gripper_action_idx["right"]] = grasp_action
+                mp_action[robot.arm_action_idx["left"]] = init_left_arm_pos
+
+            state = env.get_state()["states"]
+            obs, obs_info = env.get_obs_IL()
+            datagen_info = env_interface.get_datagen_info(action=mp_action)
+            env.step(mp_action, video_writer)
+            local_env_step += 1
+            env.global_env_step += 1
+            states.append(state)
+            actions.append(mp_action)
+            observations.append(obs)
+            datagen_infos.append(datagen_info)
+            cur_success_metrics = env.is_success()
+            for k in success:
+                success[k] = success[k] or cur_success_metrics[k]
+
+        # ====================================================================================================
+        # breakpoint()
+        
         results = dict(
             states=states,
             observations=observations,

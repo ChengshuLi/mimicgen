@@ -5,11 +5,11 @@ import numpy as np
 
 # ================ Inspect hdf5 files =================
 # # 1. teleoperation collected data
-# f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_pick_cup.hdf5", "r")
+f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_tidy_table.hdf5", "a")
 
 # # 2. after prepare_src_data.py
 # f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_pick_cup.hdf5", "r")
-# f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_tidy_table.hdf5", "r")
+# f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_dishes_away.hdf5", "r")
 
 # # 3. generated data from momagen in MimicGen format
 # f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/temp2/demo_src_r1_put_away_cup_task_D2/tmp_failed/date_04_15_2025_time_16_52_23.hdf5", "r")
@@ -22,8 +22,8 @@ breakpoint()
 # =======================================================
 
 
-# # # ============ Modify hdf5 file ==============
-# f = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_pick_cup.hdf5", "a")
+# # ============ Modify hdf5 file ==============
+# f = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_tidy_table.hdf5", "a")
 # group = f.require_group("mask")  # Create or get the group
 
 # # Define variable-length UTF-8 string data type
@@ -35,7 +35,7 @@ breakpoint()
 
 # # Create dataset
 # group.create_dataset("use", data=data_array, dtype=str_dt)
-# # # ============================================
+# # ============================================
     
 
 # # ============ Obtain stats from data gen ==============

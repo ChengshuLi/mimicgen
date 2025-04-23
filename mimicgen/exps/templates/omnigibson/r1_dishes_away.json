@@ -1,5 +1,5 @@
 {
-    "name": "r1_tidy_table",
+    "name": "r1_dishes_away",
     "type": "omnigibson_bimanual",
     "experiment": {
         "name": "demo",
@@ -45,11 +45,11 @@
                 "arm_left":{
                     "subtask_1": {
                         "arm": "left",
-                        "object_ref": "teacup_601",
+                        "object_ref": null,
                         "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 400,
-                        "MP_end_step": 400,
+                        "subtask_term_step": 850,
+                        "MP_end_step": 850,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -62,11 +62,11 @@
                 "arm_right":{
                     "subtask_1": {
                         "arm": "right",
-                        "object_ref": null,
+                        "object_ref": "plate_602",
                         "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 400,
-                        "MP_end_step": 400,
+                        "subtask_term_step": 850,
+                        "MP_end_step": 850,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -82,11 +82,11 @@
                 "arm_left":{
                     "subtask_1": {
                         "arm": "left",
-                        "object_ref": "teacup_601",
+                        "object_ref": null,
                         "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 730,
-                        "MP_end_step": 630,
+                        "subtask_term_step": 1000,
+                        "MP_end_step": 1000,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -99,11 +99,11 @@
                 "arm_right":{
                     "subtask_1": {
                         "arm": "right",
-                        "object_ref": null,
+                        "object_ref": "plate_602",
                         "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 730,
-                        "MP_end_step": 730,
+                        "subtask_term_step": 1000,
+                        "MP_end_step": 900,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -119,11 +119,11 @@
                 "arm_left":{
                     "subtask_1": {
                         "arm": "left",
-                        "object_ref": "drop_in_sink_awvzkn_0",
-                        "attached_obj": "teacup_601",
+                        "object_ref": "plate_601",
+                        "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 1000,
-                        "MP_end_step": 1000,
+                        "subtask_term_step": 1150,
+                        "MP_end_step": 1150,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -137,10 +137,10 @@
                     "subtask_1": {
                         "arm": "right",
                         "object_ref": null,
-                        "attached_obj": null,
+                        "attached_obj": "plate_602",
                         "subtask_term_signal": null,
-                        "subtask_term_step": 1000,
-                        "MP_end_step": 1000,
+                        "subtask_term_step": 1150,
+                        "MP_end_step": 1150,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -156,11 +156,11 @@
                 "arm_left":{
                     "subtask_1": {
                         "arm": "left",
-                        "object_ref": "drop_in_sink_awvzkn_0",
-                        "attached_obj": "teacup_601",
+                        "object_ref": "plate_601",
+                        "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 1210,
-                        "MP_end_step": 1100,
+                        "subtask_term_step": 1465,
+                        "MP_end_step": 1300,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
@@ -174,10 +174,121 @@
                     "subtask_1": {
                         "arm": "right",
                         "object_ref": null,
+                        "attached_obj": "plate_602",
+                        "subtask_term_signal": null,
+                        "subtask_term_step": 1465,
+                        "MP_end_step": 1465,
+                        "subtask_term_offset_range": null,
+                        "selection_strategy": "random",
+                        "selection_strategy_kwargs": null,
+                        "action_noise": 0.0,
+                        "num_interpolation_steps": 50,
+                        "num_fixed_steps": 0,
+                        "apply_noise_during_interpolation": false
+                    }
+                }
+            },
+            "phase_5":{
+                "type": "navigation",
+                "arm_left":{
+                    "subtask_1": {
+                        "arm": "left",
+                        "object_ref": "plate_603",
+                        "attached_obj": "plate_601",
+                        "subtask_term_signal": null,
+                        "subtask_term_step": 1800,
+                        "MP_end_step": 1800,
+                        "subtask_term_offset_range": null,
+                        "selection_strategy": "random",
+                        "selection_strategy_kwargs": null,
+                        "action_noise": 0.0,
+                        "num_interpolation_steps": 50,
+                        "num_fixed_steps": 0,
+                        "apply_noise_during_interpolation": false
+                    }
+                },
+                "arm_right":{
+                    "subtask_1": {
+                        "arm": "right",
+                        "object_ref": "plate_603",
+                        "attached_obj": "plate_602",
+                        "subtask_term_signal": null,
+                        "subtask_term_step": 1800,
+                        "MP_end_step": 1800,
+                        "subtask_term_offset_range": null,
+                        "selection_strategy": "random",
+                        "selection_strategy_kwargs": null,
+                        "action_noise": 0.0,
+                        "num_interpolation_steps": 50,
+                        "num_fixed_steps": 0,
+                        "apply_noise_during_interpolation": false
+                    }
+                }
+            },
+            "phase_6":{
+                "type": "uncoordinated",
+                "arm_left":{
+                    "subtask_1": {
+                        "arm": "left",
+                        "object_ref": "plate_603",
+                        "attached_obj": "plate_601",
+                        "subtask_term_signal": null,
+                        "subtask_term_step": 2320,
+                        "MP_end_step": 2150,
+                        "subtask_term_offset_range": null,
+                        "selection_strategy": "random",
+                        "selection_strategy_kwargs": null,
+                        "action_noise": 0.0,
+                        "num_interpolation_steps": 50,
+                        "num_fixed_steps": 0,
+                        "apply_noise_during_interpolation": false
+                    }
+                },
+                "arm_right":{
+                    "subtask_1": {
+                        "arm": "right",
+                        "object_ref": null,
+                        "attached_obj": "plate_602",
+                        "subtask_term_signal": null,
+                        "subtask_term_step": 2320,
+                        "MP_end_step": 2320,
+                        "subtask_term_offset_range": null,
+                        "selection_strategy": "random",
+                        "selection_strategy_kwargs": null,
+                        "action_noise": 0.0,
+                        "num_interpolation_steps": 50,
+                        "num_fixed_steps": 0,
+                        "apply_noise_during_interpolation": false
+                    }
+                }
+            },
+            "phase_7":{
+                "type": "uncoordinated",
+                "arm_left":{
+                    "subtask_1": {
+                        "arm": "left",
+                        "object_ref": null,
                         "attached_obj": null,
                         "subtask_term_signal": null,
-                        "subtask_term_step": 1210,
-                        "MP_end_step": 1210,
+                        "subtask_term_step": 2700,
+                        "MP_end_step": 2700,
+                        "subtask_term_offset_range": null,
+                        "selection_strategy": "random",
+                        "selection_strategy_kwargs": null,
+                        "action_noise": 0.0,
+                        "num_interpolation_steps": 50,
+                        "num_fixed_steps": 0,
+                        "apply_noise_during_interpolation": false
+                    }
+                },
+                "arm_right":{
+                    "subtask_1": {
+                        "arm": "right",
+                        "object_ref": "plate_603",
+                        "attached_obj": "plate_602",
+                        "subtask_term_signal": null,
+                        "subtask_term_step": 2700,
+                        "MP_end_step": 2570,
                         "subtask_term_offset_range": null,
                         "selection_strategy": "random",
                         "selection_strategy_kwargs": null,
