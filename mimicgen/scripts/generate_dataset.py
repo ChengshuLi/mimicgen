@@ -160,6 +160,7 @@ def generate_dataset(
     enable_marker_vis=False,
     ds_ratio=1,
     no_partial_tasks=False,
+    headless=False,
 ):
     """
     Main function to collect a new dataset with MimicGen.
@@ -209,7 +210,6 @@ def generate_dataset(
     random.seed(mg_config.experiment.seed)
     np.random.seed(mg_config.experiment.seed)
     th.manual_seed(mg_config.experiment.seed)
-
 
     # create new folder for this data generation run
     base_folder = os.path.expandvars(os.path.expanduser(mg_config.experiment.generation.path))
@@ -775,6 +775,7 @@ def main(args):
             enable_marker_vis=args.enable_marker_vis,
             ds_ratio=args.ds_ratio,
             no_partial_tasks=args.no_partial_tasks,
+            headless=args.headless,
         )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
