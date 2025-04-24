@@ -812,8 +812,8 @@ class MG_R1TidyTable(OmniGibsonInterfaceBimanual):
         """
         # two relative objects: coffee_cup and teacup
         return dict(
-            teacup=self.get_object_pose(obj=self.env.scene.object_registry("name", "teacup_601")),
-            sink=self.get_object_pose(obj=self.env.scene.object_registry("name", "drop_in_sink_awvzkn_0")),
+            teacup_601=self.get_object_pose(obj=self.env.scene.object_registry("name", "teacup_601")),
+            drop_in_sink_awvzkn_0=self.get_object_pose(obj=self.env.scene.object_registry("name", "drop_in_sink_awvzkn_0")),
         )
 
     def get_subtask_term_signals(self):
@@ -876,3 +876,51 @@ class MG_R1PickCup(OmniGibsonInterfaceBimanual):
 
         return signals
     
+
+class MG_R1DishesAway(OmniGibsonInterfaceBimanual):
+    """
+    Corresponds to OG test_r1_cup task and variants.
+    """
+    def get_object_poses(self):
+        """
+        Gets the pose of each object relevant to MimicGen data generation in the current scene.
+
+        Returns:
+            object_poses (dict): dictionary that maps object name (str) to object pose matrix (4x4 np.array)
+        """
+        # two relative objects: coffee_cup and teacup
+        return dict(
+            bar_gjeoer_0=self.get_object_pose(obj=self.env.scene.object_registry("name", "bar_gjeoer_0")),
+            shelf_pfusrd_1=self.get_object_pose(obj=self.env.scene.object_registry("name", "shelf_pfusrd_1")),
+            plate_603=self.get_object_pose(obj=self.env.scene.object_registry("name", "plate_603")),
+            plate_602=self.get_object_pose(obj=self.env.scene.object_registry("name", "plate_602")),
+            plate_601=self.get_object_pose(obj=self.env.scene.object_registry("name", "plate_601")),
+        )
+
+    def get_subtask_term_signals(self):
+        """
+        Gets a dictionary of binary flags for each subtask in a task. The flag is 1
+        when the subtask has been completed and 0 otherwise. MimicGen only uses this
+        when parsing source demonstrations at the start of data generation, and it only
+        uses the first 0 -> 1 transition in this signal to detect the end of a subtask.
+
+        Returns:
+            subtask_term_signals (dict): dictionary that maps subtask name to termination flag (0 or 1)
+        """
+        signals = dict()
+
+        signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.scene.object_registry("name", "coffee_cup"))))
+
+        # TODO: need to check why the grasp signal can be -1 before 1
+        # TODO: the current setup cannot handle arm role change
+        # TODO: need to be changed
+        # TRUE = 1
+        # UNKNOWN = 0
+        # FALSE = -1
+        # signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"])))
+        # signals["ungrasp_right"] = abs(1 - abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.task.object_scope["coffee_cup.n.01_1"]))))
+
+        # signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
+        # signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
+
+        return signals
