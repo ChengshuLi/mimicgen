@@ -507,6 +507,7 @@ class WaypointTrajectory(object):
 
         if phase_type == "navigation":
             nav_curobo_mp_start_time = time.time()
+            nav_execution_start_time = time.time()
             
             seq = self.waypoint_sequences[0]
             
@@ -650,6 +651,7 @@ class WaypointTrajectory(object):
 
                     continue
                 
+                print("Time taken for nav execution: {:.2f} seconds".format(time.time() - nav_execution_start_time))
                 # # Look at the object
                 # # TODO: Save this action to the results dict
                 # torso_joint_pos = robot.get_joint_positions()[robot.trunk_control_idx]
