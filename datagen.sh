@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=30G
-#SBATCH --gres=gpu:2080ti:1
+#SBATCH --gres=gpu:titanrtx:1
 
 NUM_DEMOS=50
 DR=0
