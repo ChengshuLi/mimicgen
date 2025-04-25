@@ -308,6 +308,7 @@ def generate_dataset(
         render_offscreen=write_video,
         use_image_obs=use_image_obs,
         use_depth_obs=use_depth_obs,
+        manipulation_only=False,
     )
     print("\n==== Using environment with the following metadata ====")
     print(json.dumps(env.serialize(), indent=4))
