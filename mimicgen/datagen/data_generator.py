@@ -494,6 +494,7 @@ class DataGenerator(object):
         generated_src_demo_labels = [] # like @generated_src_demo_inds, but padded to align with size of @generated_actions
         generated_demo_left_mp_ranges = []
         generated_demo_right_mp_ranges = []
+        phase_logs = dict()
 
         # for left arms first
         for current_phase_ind in range(self.num_phases):
@@ -502,13 +503,15 @@ class DataGenerator(object):
                 break 
             
             # # remove later
-            # if current_phase_ind > 0:
-            #     continue
+            # if current_phase_ind > 4:
+            #     break
 
             # for debugging
             if env.manipulation_only:
                 if current_phase_ind == 0:
                     continue
+            
+            phase_logs[current_phase_ind] = dict()
             
             # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]
@@ -741,7 +744,8 @@ class DataGenerator(object):
                     object_ref=object_ref,
                     enable_marker_vis=enable_marker_vis,
                     ds_ratio=ds_ratio,
-                    grasp_init_views_video_writer=grasp_init_views_video_writer
+                    grasp_init_views_video_writer=grasp_init_views_video_writer,
+                    current_phase_logs=phase_logs[current_phase_ind],
                 )
                 # To let any remaining simulation steps finish.
                 for _ in range(50): og.sim.step()
@@ -769,6 +773,7 @@ class DataGenerator(object):
                             phases_completed=current_phase_ind, # Not adding 1 here because the current phase failed
                             left_mp_ranges=generated_demo_left_mp_ranges,
                             right_mp_ranges=generated_demo_right_mp_ranges,
+                            phase_logs=phase_logs,
                         )
                         return results
                     else:
@@ -818,6 +823,7 @@ class DataGenerator(object):
             phases_completed=current_phase_ind+1,
             left_mp_ranges=generated_demo_left_mp_ranges,
             right_mp_ranges=generated_demo_right_mp_ranges,
+            phase_logs=phase_logs,
         )
         # import pdb; pdb.set_trace()
         # print('before returning the results')

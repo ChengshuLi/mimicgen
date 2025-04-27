@@ -71,10 +71,6 @@ remove the split ratio in case you don't want anything in the validation set
 4. collision_activation_distance (in curobo.py and ..action_primitives.py)
 
 
-### Mimicgen relevant config files:
-
-
-
 
 Some useful curobo pointers:
 1. Difference between TrajOpt and MotionGen: https://github.com/NVlabs/curobo/discussions/227
@@ -83,4 +79,8 @@ Some useful curobo pointers:
 - first running a particle-based solver (MPPI) and then refining with a gradient-based solver (L-BFGS)
 3. finetuning cost weights: https://github.com/NVlabs/curobo/discussions/116
 
+
+Base placement procedure:
+1. Given first eef pose in the sequence, sample base2d poses near that eef pose
+ 
 

@@ -408,6 +408,7 @@ def generate_dataset(
         "time_taken": [],
         "task_success": [],
         "phases_completed": [],
+        "phase_logs": [],
     }
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
@@ -449,8 +450,10 @@ def generate_dataset(
             all_episode_logs["task_success"].append(env.is_success()["task"])
             if generated_traj is not None:
                 all_episode_logs["phases_completed"].append(generated_traj["phases_completed"])
+                all_episode_logs["phase_logs"].append(generated_traj["phase_logs"])
             else:
                 all_episode_logs["phases_completed"].append(-1)
+                all_episode_logs["phase_logs"].append(dict())
 
         except exceptions_to_except as e:
             # problematic trajectory - do not have this count towards our total number of attempts, and re-try
@@ -467,6 +470,7 @@ def generate_dataset(
             all_episode_logs["time_taken"].append(episode_time_taken)
             all_episode_logs["task_success"].append(False)
             all_episode_logs["phases_completed"].append(-1)
+            all_episode_logs["phase_logs"].append(dict())
             
             num_problematic += 1
             continue
