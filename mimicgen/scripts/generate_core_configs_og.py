@@ -37,7 +37,7 @@ OUTPUT_FOLDER = os.path.join(mimicgen.__path__[0], "../datasets/generated_data_m
 NUM_TRAJ = 2
 
 # whether to guarantee that many successful trajectories (e.g. keep running until that many successes, or stop at that many attempts)
-GUARANTEE = False
+GUARANTEE = True
 
 # whether to run a quick debug run instead of full generation
 DEBUG = False

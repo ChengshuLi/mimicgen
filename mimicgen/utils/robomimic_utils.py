@@ -46,6 +46,7 @@ def create_env(
     init_curobo=True,
     policy_rollout=False,
     manipulation_only=False,
+    real_robot_mode=False,
 ):
     """
     Helper function to create the environment from dataset metadata and arguments.
@@ -103,6 +104,7 @@ def create_env(
         # init_curobo=init_curobo,
         policy_rollout=policy_rollout,
         manipulation_only=manipulation_only,
+        real_robot_mode=real_robot_mode,
     )
 
     return env

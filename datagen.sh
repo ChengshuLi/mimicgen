@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=30G
-#SBATCH --gres=gpu:2080ti:1
+#SBATCH --gres=gpu:titanrtx:1
 
 NUM_DEMOS=50
 DR=0
@@ -18,5 +18,5 @@ OMNIGIBSON_HEADLESS=1 python mimicgen/scripts/generate_dataset.py \
     --num_demos $NUM_DEMOS \
     --bimanual \
     --auto-remove-exp \
-    --folder datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup_worker_$WORKER_ID \
+    --folder datasets/generated_data_mimicgen_format/core_datasets_og_moma_sim2real/r1_pick_cup_worker_$WORKER_ID \
     --seed $WORKER_ID

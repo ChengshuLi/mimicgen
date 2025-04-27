@@ -525,6 +525,7 @@ class WaypointTrajectory(object):
 
         if phase_type == "navigation":
             nav_curobo_mp_start_time = time.time()
+            nav_execution_start_time = time.time()
             
             seq = self.waypoint_sequences[0]
             
@@ -820,9 +821,10 @@ class WaypointTrajectory(object):
             #     breakpoint()
 
             
-            # This is for retract behavior
+            # This is for retract behavior. We are not using this as of now, but let it be 
             initial_left_eef_pose = robot.get_eef_pose("left")
             initial_right_eef_pose = robot.get_eef_pose("right")
+            
             print("ARM MP START")
             eyes_target_pos, eyes_target_quat = None, None
             if env.enable_head_tracking:
