@@ -5,7 +5,7 @@ import numpy as np
 
 # ================ Inspect hdf5 files =================
 # # 1. teleoperation collected data
-f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_tidy_table.hdf5", "a")
+# f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_tidy_table.hdf5", "a")
 
 # # 2. after prepare_src_data.py
 # f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_pick_cup.hdf5", "r")
@@ -18,7 +18,7 @@ f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_ti
 # # 4. generated data from momagen in Robomimic format
 # f4 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_floor_filtering_fps_4096_color.hdf5", "r")
 
-breakpoint()
+# breakpoint()
 # =======================================================
 
 
@@ -40,10 +40,41 @@ breakpoint()
 
 # # ============ Obtain stats from data gen ==============
 
-# file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_pick_cup/demo_src_r1_pick_cup_task_D0/logs/attempt_0000300_succ_254_rate_84.67.json"
-# with open(file_path, 'r') as f:
-#     data = json.load(f)
-# breakpoint()
+file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_with_nav_add_52/demo_src_r1_dishes_away_task_D0/logs/attempt_000052_succ_19_rate_36.54.json"
+with open(file_path, 'r') as f:
+    data = json.load(f)
+breakpoint()
+
+phases_completed = np.array(data["all_episode_logs"]["phases_completed"])
+err_status = np.array(data["all_episode_logs"]["err_status"])
+phase_logs = data["all_episode_logs"]["phase_logs"]
+
+unique_elements, counts = np.unique(phases_completed, return_counts=True)
+frequency = dict(zip(unique_elements, counts))
+
+indices = np.where(phases_completed == 3)[0]
+
+counter = 0
+total_counter = 0
+
+no_retract_err, invalid_query = 0, 0
+for i, phase_log in enumerate(phase_logs):
+    for k in phase_log.keys():
+        total_counter += 1
+        # if len(phase_log[k]["arm_mp_planning_time"].keys()) > 1:
+        #     counter += 1
+        #     print("len: ", len(phase_log[k]["arm_mp_planning_time"].keys()))
+        #     print("err: ", err_status[i])
+        if "0" in phase_log[k]["full_retract_mp_err"].keys():
+            if phase_log[k]["full_retract_mp_err"]["0"] == "None":
+                no_retract_err += 1
+            if phase_log[k]["full_retract_mp_err"]["0"] == "Invalid Query":
+                invalid_query += 1
+
+print("total_counter: ", total_counter)
+print("counter: ", counter)
+print("no_retract_err: ", no_retract_err)
+print("invalid_query: ", invalid_query)
 
 # # # Obtain episodes that have task failures (no MP failure)
 # for idx in range(len(data["all_episode_logs"]["episode_number"])):

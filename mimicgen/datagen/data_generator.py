@@ -694,17 +694,43 @@ class DataGenerator(object):
                 env.primitive._tracking_object = ref_obj
                 print("Will track object for this sub-step: ", ref_obj.name)
 
-                # Inform primitive stack about attached object for this phase
-                if attached_obj_dict is None:
-                    env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
-                else:
-                    attached_obj_new = {}
-                    attached_obj_scale = {}
-                    for arm, obj_name in attached_obj_dict.items():
-                        if obj_name is not None:
-                            attached_obj_new[env.robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
-                            attached_obj_scale[env.robot.eef_link_names[arm]] = 0.9
-                    env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+                # # Option 1: Inform primitive stack about attached object for this phase
+                # if attached_obj_dict is None:
+                #     env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
+                # else:
+                #     attached_obj_new = {}
+                #     attached_obj_scale = {}
+                #     for arm, obj_name in attached_obj_dict.items():
+                #         if obj_name is not None:
+                #             attached_obj_new[env.robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
+                #             attached_obj_scale[env.robot.eef_link_names[arm]] = 0.9
+                #     env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+
+                # Option 2:
+                robot = env.robot
+                attached_obj_new = {}
+                attached_obj_scale = {}
+                for local_arm_side in ["left", "right"]:  
+                    is_grasping = robot.is_grasping(arm=local_arm_side)
+                    # print("local_arm_side is_grasping: ", local_arm_side, is_grasping)
+                    if is_grasping == og.controllers.IsGraspingState.TRUE: 
+                        # Find the object that the robot is grapsing in that arm
+                        task_relevant_objs = env._get_task_relevant_objs()
+                        for task_relevant_obj in task_relevant_objs:
+                            # TODO: remove the stationay object hardcoding. Make it more general
+                            if all(keyword not in task_relevant_obj.name for keyword in ["table", "shelf", "bar", "sink"]):
+                                is_grasping_candidate_obj = robot.is_grasping(arm=local_arm_side, candidate_obj=task_relevant_obj)
+                                # print("local_arm_side is_grasping_candidate_obj: ", local_arm_side, is_grasping_candidate_obj, task_relevant_obj.root_link.name) 
+                                if is_grasping_candidate_obj == og.controllers.IsGraspingState.TRUE:
+                                    print(f"arm {local_arm_side} is_grasping {task_relevant_obj.root_link.name}") 
+                                    attached_obj_new[f"{local_arm_side}_eef_link"] = task_relevant_obj.root_link
+                                    attached_obj_scale[f"{local_arm_side}_eef_link"] = 0.9
+                                    # robot can only be holding one object at a time
+                                    break
+                if attached_obj_new == {}:
+                    attached_obj_new = None
+                    attached_obj_scale = None
+                env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
                 
                 # In case reachability test is done for all eef poses (last MP waypoint + replay waypoints)
                 if not check_only_last_mp_waypoint:
@@ -778,11 +804,82 @@ class DataGenerator(object):
                                                                         eyes_pose=eyes_pose,)
                 # ======================== End of reachibility and visibility check =========================
                 
-                
-                # 1. If object is not reacable or visible, add a navigation phase
-                if not reachable_and_visible:
-                    print("=========== Navigation phase ===========")
-                    # Execute the navigation trajectory and collect data.
+                # If manipulation MP fails, we retry nav and manipulation phases but only 1 extra time at max
+                for nav_try in range(env.num_nav_retry_on_arm_mp_failure+1):
+                    # 1. If object is not reachable or visible, add a navigation phase
+                    if not reachable_and_visible or nav_try > 0:
+                        print("=========== Navigation phase ===========")
+                        # Execute the navigation trajectory and collect data.
+                        exec_results = traj_to_execute.execute(
+                            env=env,
+                            env_interface=env_interface,
+                            render=render,
+                            video_writer=video_writer,
+                            video_skip=video_skip,
+                            camera_names=camera_names,
+                            bimanual=self.bimanual,
+                            cur_subtask_end_step_MP=MP_end_steps,
+                            # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
+                            attached_obj=attached_obj_dict,
+                            phase_type="navigation",
+                            object_ref=object_ref,
+                            enable_marker_vis=enable_marker_vis,
+                            ds_ratio=ds_ratio,
+                            grasp_init_views_video_writer=grasp_init_views_video_writer,
+                            phase_logs=phase_logs,
+                        )
+                        # To let any remaining simulation steps finish.
+                        for _ in range(50): og.sim.step()
+                    
+                        # This means that the the current phase failed 
+                        if exec_results is None:
+                            # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
+                            if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:
+                                if len(generated_actions) > 0:
+                                    generated_actions = np.concatenate(generated_actions, axis=0)
+                                    generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
+                                results = dict(
+                                    initial_state=new_initial_state,
+                                    states=generated_states,
+                                    observations=generated_obs,
+                                    datagen_infos=generated_datagen_infos,
+                                    actions=generated_actions,
+                                    success=generated_success,
+                                    src_demo_inds=generated_src_demo_inds,
+                                    src_demo_labels=generated_src_demo_labels,
+                                    mp_end_steps=generated_demo_mp_end_steps,
+                                    subtask_lengths=generated_demo_subtask_lengths,
+                                    sensor_info=sensor_info,
+                                    partial=True,
+                                    phases_completed=env.phases_completed_wo_mp_err,
+                                    left_mp_ranges=generated_demo_left_mp_ranges,
+                                    right_mp_ranges=generated_demo_right_mp_ranges,
+                                    phase_logs=phase_logs,
+                                )
+                                return results
+                            else:
+                                return None
+
+                        # check that trajectory is non-empty
+                        if len(exec_results["states"]) > 0:
+                            generated_states += exec_results["states"]
+                            generated_obs += exec_results["observations"]
+                            generated_datagen_infos += exec_results["datagen_infos"]
+                            generated_actions.append(exec_results["actions"])
+                            generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
+                            if exec_results["left_mp_ranges"] is not None:
+                                generated_demo_left_mp_ranges.append(exec_results["left_mp_ranges"])
+                            if exec_results["right_mp_ranges"] is not None:
+                                generated_demo_right_mp_ranges.append(exec_results["right_mp_ranges"])
+                            generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
+                            generated_success = generated_success or exec_results["success"]
+                            generated_src_demo_inds.append(selected_src_demo_ind)
+                            generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
+
+                        
+                    # 2. Now we can execute the manipulation segment
+                    print("=========== Manipulation phase ===========")
+                    # Execute the manipulation trajectory and collect data.
                     exec_results = traj_to_execute.execute(
                         env=env,
                         env_interface=env_interface,
@@ -794,7 +891,7 @@ class DataGenerator(object):
                         cur_subtask_end_step_MP=MP_end_steps,
                         # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
                         attached_obj=attached_obj_dict,
-                        phase_type="navigation",
+                        phase_type=phase_type,
                         object_ref=object_ref,
                         enable_marker_vis=enable_marker_vis,
                         ds_ratio=ds_ratio,
@@ -803,6 +900,7 @@ class DataGenerator(object):
                     )
                     # To let any remaining simulation steps finish.
                     for _ in range(50): og.sim.step()
+                    # breakpoint()
                 
                     # This means that the the current phase failed 
                     if exec_results is None:
@@ -849,79 +947,12 @@ class DataGenerator(object):
                         generated_src_demo_inds.append(selected_src_demo_ind)
                         generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
 
+                    # In most cases we don't need to retry nav. This is only trigered if manipulation MP (arm_no_torso mode) fails due to IK or TrajOpt failure 
+                    if not exec_results["retry_nav"]:
+                        break
                     
-                # 2. Now we can execute the manipulation segment
-                print("=========== Manipulation phase ===========")
-                # Execute the manipulation trajectory and collect data.
-                exec_results = traj_to_execute.execute(
-                    env=env,
-                    env_interface=env_interface,
-                    render=render,
-                    video_writer=video_writer,
-                    video_skip=video_skip,
-                    camera_names=camera_names,
-                    bimanual=self.bimanual,
-                    cur_subtask_end_step_MP=MP_end_steps,
-                    # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
-                    attached_obj=attached_obj_dict,
-                    phase_type=phase_type,
-                    object_ref=object_ref,
-                    enable_marker_vis=enable_marker_vis,
-                    ds_ratio=ds_ratio,
-                    grasp_init_views_video_writer=grasp_init_views_video_writer,
-                    phase_logs=phase_logs,
-                )
-                # To let any remaining simulation steps finish.
-                for _ in range(50): og.sim.step()
-                # breakpoint()
-            
-                # This means that the the current phase failed 
-                if exec_results is None:
-                    # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
-                    if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:
-                        if len(generated_actions) > 0:
-                            generated_actions = np.concatenate(generated_actions, axis=0)
-                            generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
-                        results = dict(
-                            initial_state=new_initial_state,
-                            states=generated_states,
-                            observations=generated_obs,
-                            datagen_infos=generated_datagen_infos,
-                            actions=generated_actions,
-                            success=generated_success,
-                            src_demo_inds=generated_src_demo_inds,
-                            src_demo_labels=generated_src_demo_labels,
-                            mp_end_steps=generated_demo_mp_end_steps,
-                            subtask_lengths=generated_demo_subtask_lengths,
-                            sensor_info=sensor_info,
-                            partial=True,
-                            phases_completed=env.phases_completed_wo_mp_err,
-                            left_mp_ranges=generated_demo_left_mp_ranges,
-                            right_mp_ranges=generated_demo_right_mp_ranges,
-                            phase_logs=phase_logs,
-                        )
-                        return results
-                    else:
-                        return None
-
-                # check that trajectory is non-empty
-                if len(exec_results["states"]) > 0:
-                    generated_states += exec_results["states"]
-                    generated_obs += exec_results["observations"]
-                    generated_datagen_infos += exec_results["datagen_infos"]
-                    generated_actions.append(exec_results["actions"])
-                    generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
-                    if exec_results["left_mp_ranges"] is not None:
-                        generated_demo_left_mp_ranges.append(exec_results["left_mp_ranges"])
-                    if exec_results["right_mp_ranges"] is not None:
-                        generated_demo_right_mp_ranges.append(exec_results["right_mp_ranges"])
-                    generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
-                    generated_success = generated_success or exec_results["success"]
-                    generated_src_demo_inds.append(selected_src_demo_ind)
-                    generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
-
-                if pause_subtask:
-                    input("Pausing after subtask {} execution. Press any key to continue...".format(subtask_ind))
+                    if pause_subtask:
+                        input("Pausing after subtask {} execution. Press any key to continue...".format(subtask_ind))
 
         # TODO: why need to merge the generated actions
         # merge numpy arrays

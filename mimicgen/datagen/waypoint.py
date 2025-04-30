@@ -458,6 +458,35 @@ class WaypointTrajectory(object):
 
         return current_phase_logs
     
+    def obtain_attached_object(self, env, robot):
+        grasp_action = {"left": 1.0, "right": 1.0}
+        attached_obj = {}
+        attached_obj_scale = {}
+        for local_arm_side in ["left", "right"]:  
+            is_grasping = robot.is_grasping(arm=local_arm_side)
+            # print("local_arm_side is_grasping: ", local_arm_side, is_grasping)
+            if is_grasping == og.controllers.IsGraspingState.TRUE: 
+                grasp_action[local_arm_side] = -1.0
+                # Find the object that the robot is grapsing in that arm
+                task_relevant_objs = env._get_task_relevant_objs()
+                for task_relevant_obj in task_relevant_objs:
+                    # TODO: remove the stationay object hardcoding. Make it more general
+                    if all(keyword not in task_relevant_obj.name for keyword in ["table", "shelf", "bar", "sink"]):
+                        is_grasping_candidate_obj = robot.is_grasping(arm=local_arm_side, candidate_obj=task_relevant_obj)
+                        # print("local_arm_side is_grasping_candidate_obj: ", local_arm_side, is_grasping_candidate_obj, task_relevant_obj.root_link.name) 
+                        if is_grasping_candidate_obj == og.controllers.IsGraspingState.TRUE:
+                            print(f"arm {local_arm_side} is_grasping {task_relevant_obj.root_link.name}") 
+                            attached_obj[f"{local_arm_side}_eef_link"] = task_relevant_obj.root_link
+                            attached_obj_scale[f"{local_arm_side}_eef_link"] = 0.9
+                            # robot can only be holding one object at a time
+                            break
+        retval = dict(
+            grasp_action=grasp_action,
+            attached_obj=attached_obj,
+            attached_obj_scale=attached_obj_scale,
+        )
+        return retval
+    
     def execute(
         self, 
         env,
@@ -695,6 +724,7 @@ class WaypointTrajectory(object):
                     subtask_lengths=local_env_step,
                     left_mp_ranges=left_mp_ranges,
                     right_mp_ranges=right_mp_ranges,
+                    retry_nav=False,
                 )
                 # execution_phase_ind keeps track of each phase that was tried to be executed (even if MP failed for that phase). 
                 # In this case MP succeeded and phase was actually executed
@@ -797,17 +827,22 @@ class WaypointTrajectory(object):
                 # To test MP in arm_no_toso mode instead of arm mode, uncomment the line below
                 emb_sel = CuRoboEmbodimentSelection.ARM_NO_TORSO
                 
-                # Attached the object to the robot for planning
-                if attached_obj is None:
-                    attached_obj_scale = None
-                else:
-                    attached_obj_new = {}
-                    attached_obj_scale = {}
-                    for arm, obj_name in attached_obj.items():
-                        if obj_name is not None:
-                            attached_obj_new[robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
-                            attached_obj_scale[robot.eef_link_names[arm]] = 0.9
-                    attached_obj = attached_obj_new
+                # # Option 1: Use template to know attached objects
+                # if attached_obj is None:
+                #     attached_obj_scale = None
+                # else:
+                #     attached_obj_new = {}
+                #     attached_obj_scale = {}
+                #     for arm, obj_name in attached_obj.items():
+                #         if obj_name is not None:
+                #             attached_obj_new[robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
+                #             attached_obj_scale[robot.eef_link_names[arm]] = 0.9
+                #     attached_obj = attached_obj_new
+
+                # Option 2: Use OG to know attached objects
+                retval = self.obtain_attached_object(env, robot)
+                attached_obj = retval["attached_obj"]
+                attached_obj_scale = retval["attached_obj_scale"]
 
                 # Option 2: If one of the arm does not hav a ref object, remove it from the target pose of MP (will move this arm randomly in this case)
                 if object_ref["arm_right"] is None:
@@ -844,7 +879,8 @@ class WaypointTrajectory(object):
                     eyes_target_pos = obj_pose[0]
                     eyes_target_quat = obj_pose[1]
                 
-                num_tries = 3
+                # For manipulation, doing multiple tries does not help much (observed empirically). So, we set num_tries to 1
+                num_tries = 1
                 arm_mp_trial = 0
                 new_target_pos = copy.deepcopy(target_pos)
                 while True:
@@ -879,10 +915,25 @@ class WaypointTrajectory(object):
                         #         actions.append(action)
                         #         observations.append(obs)
                         #         datagen_infos.append(datagen_info)
+
+                        if ("IK Fail" in mp_results[0].status.value or "TrajOpt Fail" in mp_results[0].status.value) and env.retry_nav_on_arm_mp_failure:
+                            results = dict(
+                                states=states,
+                                observations=observations,
+                                datagen_infos=datagen_infos,
+                                actions=np.array(actions),
+                                success=bool(success["task"]),
+                                retry_nav=True,
+                            )
+                            return results
                         
-                        # If IK fail happens, no need to run num_tries times as it most likely won't succeed. So, we can save time
-                        if arm_mp_trial == num_tries or ("IK Fail" in mp_results[0].status.value):
-                        # if arm_mp_trial == num_tries:
+                        # If we are not retrying nav on ARM IK/TrajOpt failures, no need to run num_tries times as it most likely won't succeed. So, we can save time
+                        if env.retry_nav_on_arm_mp_failure:
+                            base_condition = arm_mp_trial == num_tries
+                        else:
+                            base_condition = arm_mp_trial == num_tries or ("IK Fail" in mp_results[0].status.value)
+                        
+                        if base_condition:
                             print("Arm MP failed after {} trials. Giving up.".format(num_tries))
                             if "TrajOpt Fail" in mp_results[0].status.value:
                                 env.err = "ArmMPTrajOptFailed"
@@ -1252,27 +1303,10 @@ class WaypointTrajectory(object):
                 k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()
             }
             
-            grasp_action = {"left": 1.0, "right": 1.0}
-            attached_obj = {}
-            attached_obj_scale = {}
-            for local_arm_side in ["left", "right"]:  
-                is_grasping = robot.is_grasping(arm=local_arm_side)
-                # print("local_arm_side is_grasping: ", local_arm_side, is_grasping)
-                if is_grasping == og.controllers.IsGraspingState.TRUE: 
-                    grasp_action[local_arm_side] = -1.0
-                    # Find the object that the robot is grapsing in that arm
-                    task_relevant_objs = env._get_task_relevant_objs()
-                    for task_relevant_obj in task_relevant_objs:
-                        # TODO: remove the stationay object hardcoding. Make it more general
-                        if all(keyword not in task_relevant_obj.name for keyword in ["table", "shelf", "bar", "sink"]):
-                            is_grasping_candidate_obj = robot.is_grasping(arm=local_arm_side, candidate_obj=task_relevant_obj)
-                            # print("local_arm_side is_grasping_candidate_obj: ", local_arm_side, is_grasping_candidate_obj, task_relevant_obj.root_link.name) 
-                            if is_grasping_candidate_obj == og.controllers.IsGraspingState.TRUE:
-                                print(f"arm {local_arm_side} is_grasping {task_relevant_obj.root_link.name}") 
-                                attached_obj[f"{local_arm_side}_eef_link"] = task_relevant_obj.root_link
-                                attached_obj_scale[f"{local_arm_side}_eef_link"] = 0.9
-                                # robot can only be holding one object at a time
-                                break
+            retval = self.obtain_attached_object(env, robot)
+            grasp_action = retval["grasp_action"]
+            attached_obj = retval["attached_obj"]
+            attached_obj_scale = retval["attached_obj_scale"]
 
             # if enable_marker_vis:
             #     if arm_side == "left":
@@ -1442,6 +1476,7 @@ class WaypointTrajectory(object):
                 subtask_lengths=local_env_step,
                 left_mp_ranges=left_mp_ranges,
                 right_mp_ranges=right_mp_ranges,
+                retry_nav=False,
             )
             env.execution_phase_ind += 1
             env.phases_completed_wo_mp_err += 1
