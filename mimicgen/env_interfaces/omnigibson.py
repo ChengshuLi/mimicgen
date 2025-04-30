@@ -383,6 +383,11 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
                 else:
                     target_joint_pos = q
 
+            # NOTE: This clipping is important because the convex optimization (cvxpy) solver does not guarantee that the solution will be STRICTLY within the limits
+            # The result is that sometimes the joint positions obtained from the solver are just slightly (even in the order of 1e-5) out of the limits
+            # So, making the limits of target_joint_pos (in radians) a bit more stricter will help avoid this issue
+            target_joint_pos = np.clip(target_joint_pos, q_lower_limit + 0.02, q_upper_limit - 0.02)
+
             arm_command = target_joint_pos
             if arm_name == "left":
                 # arm_command, trunk_command = arm_command[:arm_dof_idx.shape[0]], arm_command[arm_dof_idx.shape[0]:]

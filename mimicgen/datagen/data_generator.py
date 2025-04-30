@@ -21,7 +21,8 @@ from mimicgen.datagen.selection_strategy import make_selection_strategy
 from mimicgen.datagen.waypoint import WaypointSequence, WaypointTrajectory
 
 import omnigibson as og
-from omnigibson.object_states.contact_bodies import ContactBodies
+import omnigibson.utils.transform_utils as T
+from omnigibson.action_primitives.curobo import CuRoboEmbodimentSelection
 
 class DataGenerator(object):
     """
@@ -410,52 +411,8 @@ class DataGenerator(object):
         env.reset()
         new_initial_state = env.get_state()
         
-        # TODO: need to reinfine the following function, the function is to make sure the robot is not in contact with the objects at the beginning
-        # # # check collisions between robot and all other objects
-        # # print('breakpoint before collision check')
-        # # breakpoint()
-        # # robot = env.robots[0]
-        # # collision_stats = robot.states[ContactBodies].get_state()
-
-        # # print('breakpoint in run_rollout to check contacts')
-        # # breakpoint()
-        # def check_reset_requirement():
-        #     need_to_reset = False
-        #     robot = env.env.robots[0]
-        #     contact_prim_set = robot.states[ContactBodies].get_value()
-        #     for prim in contact_prim_set:
-        #         print(prim.name, 'is in contact')
-        #     contact_name_list = [prim.name for prim in contact_prim_set]
-        #     for name in contact_name_list:
-        #         if 'coffee_cup' in name:
-        #             need_to_reset = True
-        #         if 'paper_cup' in name:
-        #             need_to_reset = True
-        #     return need_to_reset
-        
-        # reset_max_times = 2
-
-        # breakpoint()
-
-        # reset_count = 1
-        # while check_reset_requirement() and reset_count < reset_max_times:
-        #     print('need to reset')
-        #     reset_count += 1
-        #     env.reset()
-        #     breakpoint()
-
-        # set camera postion
-        # og.sim.viewer_camera.set_position_orientation(
-        #     position=th.tensor([ 1.7492, -0.0424,  1.5371]),
-        #     orientation=th.tensor([0.3379, 0.3417, 0.6236, 0.6166]),
-        # ) # viewer position
-
         sensor_info = env.sensor_setup()
         for _ in range(5): og.sim.render()
-        # breakpoint()
-
-        # print(sensor.intrinsic_matrix)
-        # print(sensor.get_position_orientation())
 
         # parse MP_end_step from the configuration file
         end_step_of_MP_local = self.parse_MP_end_step_local()
@@ -473,10 +430,8 @@ class DataGenerator(object):
         # all_subtask_inds_structure[0][0] is a numpy array of shape (@num_demos, @num_subtasks, 2)
         # where @num_demos is 1 right now, @num_subtasks can vary, 2 means start and end indices
 
-        # (Pdb) p all_subtask_inds_structure
-        # [[array([[[  0, 309],
-        # [309, 650]]]), array([[[  0, 360],
-        # [360, 650]]])], [array([[[650, 992]]]), array([[[650, 992]]])]]
+        #(Pdb) all_subtask_inds_structure
+        #[[array([[[  0, 730]]]), array([[[  0, 730]]])], [array([[[ 730, 1210]]]), array([[[ 730, 1210]]])]]
 
         # some state variables used during generation
         selected_src_demo_ind = None
@@ -498,63 +453,56 @@ class DataGenerator(object):
 
         # for left arms first
         for current_phase_ind in range(self.num_phases):
-            # Don't execute rest of the phases if any of the previous phases failed (mostly due to failure in MP)
+            # This is probably not being used anymore. Confirm and remove if not.
             if not env.valid_env:
                 break 
             
             # # remove later
-            # if current_phase_ind > 4:
+            # if current_phase_ind > 0:
             #     break
 
             # for debugging
             if env.manipulation_only:
                 if current_phase_ind == 0:
                     continue
-            
-            phase_logs[current_phase_ind] = dict()
-            
-            # If it's navigation phase, feed the next phase's transformmed trajectory to the waypoint executor
-            phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]
-            target_phase_ind = current_phase_ind
-            if phase_type == "navigation" and current_phase_ind < self.num_phases - 1:
-                target_phase_ind += 1
-            
-            cur_phase_task_spec = self.task_spec[target_phase_ind]
+                        
+            phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]            
+            cur_phase_task_spec = self.task_spec[current_phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
 
             # restructure subtasks indexes and reference objects
-            all_subtask_inds = all_subtask_inds_structure[target_phase_ind]
+            all_subtask_inds = all_subtask_inds_structure[current_phase_ind]
             subtask_ind_vals = np.sort(np.unique(np.concatenate((np.unique(all_subtask_inds[0]), np.unique(all_subtask_inds[1])))))
             num_subtasks = len(subtask_ind_vals) - 1
-            
-            if phase_type == "navigation" and current_phase_ind < self.num_phases - 1:
-                 num_subtasks = 1
-            
-            # a distance based heuristic to change the role of the two arms
-            # calculate the start of the replay part
-            # currently assume that the start point is the first subtask of the current phase
-            # TODO: need to change this to other starting point when the motion planner is integrated
-            start_step = subtask_ind_vals[0]
-            
-            # Uncomment later. 
-            # change_role = self.change_arm_role_heuristic(
-            #     env_interface,
-            #     start_step,
-            #     selected_src_demo_ind,
-            #     cur_phase_task_spec
-            #     )
+                        
+            # ==================================== Arm role change heuristic ====================================
             change_role = False
+            # # a distance based heuristic to change the role of the two arms
+            # # calculate the start of the replay part
+            # # currently assume that the start point is the first subtask of the current phase
+            # # TODO: need to change this to other starting point when the motion planner is integrated
+            # start_step = subtask_ind_vals[0]
+            
+            # # Uncomment later. 
+            # # change_role = self.change_arm_role_heuristic(
+            # #     env_interface,
+            # #     start_step,
+            # #     selected_src_demo_ind,
+            # #     cur_phase_task_spec
+            # #     )
+            # change_role = False
 
-            if change_role:
-                # change the information for two arms
-                cur_phase_task_spec_new = []
-                cur_phase_task_spec_new.append(cur_phase_task_spec[1])
-                cur_phase_task_spec_new.append(cur_phase_task_spec[0])
-                cur_phase_task_spec = cur_phase_task_spec_new
-                all_subtask_inds_new = []
-                all_subtask_inds_new.append(all_subtask_inds[1])
-                all_subtask_inds_new.append(all_subtask_inds[0])
-                all_subtask_inds = all_subtask_inds_new
+            # if change_role:
+            #     # change the information for two arms
+            #     cur_phase_task_spec_new = []
+            #     cur_phase_task_spec_new.append(cur_phase_task_spec[1])
+            #     cur_phase_task_spec_new.append(cur_phase_task_spec[0])
+            #     cur_phase_task_spec = cur_phase_task_spec_new
+            #     all_subtask_inds_new = []
+            #     all_subtask_inds_new.append(all_subtask_inds[1])
+            #     all_subtask_inds_new.append(all_subtask_inds[0])
+            #     all_subtask_inds = all_subtask_inds_new
+            # ====================================================================================================
 
             for subtask_ind_reordered in range(num_subtasks):
                 print("========== Phase {} Subtask {} ==========".format(current_phase_ind, subtask_ind_reordered))
@@ -582,7 +530,7 @@ class DataGenerator(object):
                     # print('subtask start and end step', selected_src_subtask_inds)
                     # print('arm_spec_subtask_inds', arm_spec_subtask_inds)
 
-                    is_first_subtask = (subtask_ind == 0) and (target_phase_ind == 0)
+                    is_first_subtask = (subtask_ind == 0) and (current_phase_ind == 0)
                     is_first_subtask_in_phase = (subtask_ind == 0)
 
                     cur_datagen_info = env_interface.get_datagen_info()
@@ -591,7 +539,7 @@ class DataGenerator(object):
                     cur_object_pose = cur_datagen_info.object_poses[subtask_object_name] if (subtask_object_name is not None) else None # 4x4
                     key_name = arm_name.replace('arm_', '')
                     attached_obj_dict[key_name] = cur_phase_task_spec[arm_i][subtask_ind]["attached_obj"]
-                    MP_end_steps.append(end_step_of_MP_local[target_phase_ind][arm_i][subtask_ind])
+                    MP_end_steps.append(end_step_of_MP_local[current_phase_ind][arm_i][subtask_ind])
                     
                     # get poses
                     src_ep_datagen_info = self.src_dataset_infos[selected_src_demo_ind]
@@ -725,10 +673,186 @@ class DataGenerator(object):
                 if change_role:
                     MP_end_steps = MP_end_steps[::-1]
                     # TODO: need to change the attached_obj_dict as well
+                
+                
+                # ========== Check reachibility and visibility of the reference object ==============
+                check_only_last_mp_waypoint = True
+                reachable, visible = False, False
 
-                # print('MP_end_steps', MP_end_steps)
+                seq = traj_to_execute.waypoint_sequences[0]
+                cur_subtask_end_step_MP = MP_end_steps
+                
+                # FIXME: If both are not None, currently setting right arm as the reference object. Fix this to account for both ref objects
+                if object_ref["arm_right"] is None:
+                    ref_object = object_ref["arm_left"]
+                elif object_ref["arm_left"] is None:
+                    ref_object = object_ref["arm_right"]
+                else:
+                    ref_object = object_ref["arm_right"]
+                
+                ref_obj = env.env.scene.object_registry("name", ref_object)
+                env.primitive._tracking_object = ref_obj
+                print("Will track object for this sub-step: ", ref_obj.name)
 
-                # Execute the trajectory and collect data.
+                # Inform primitive stack about attached object for this phase
+                if attached_obj_dict is None:
+                    env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
+                else:
+                    attached_obj_new = {}
+                    attached_obj_scale = {}
+                    for arm, obj_name in attached_obj_dict.items():
+                        if obj_name is not None:
+                            attached_obj_new[env.robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
+                            attached_obj_scale[env.robot.eef_link_names[arm]] = 0.9
+                    env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+                
+                # In case reachability test is done for all eef poses (last MP waypoint + replay waypoints)
+                if not check_only_last_mp_waypoint:
+                    left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+                    left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
+                    left_mp_last_waypoint = left_mp_waypoints[-1]
+                    left_waypoints = [left_mp_last_waypoint] + left_replay_waypoints
+
+                    left_waypoint_pos = th.vstack([th.tensor(wp.pose[0:3, 3]) for wp in left_waypoints])
+                    left_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[0:3, 0:3])) for wp in left_waypoints])
+
+                    right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+                    right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
+                    right_mp_last_waypoint = right_mp_waypoints[-1]
+                    right_waypoints = [right_mp_last_waypoint] + right_replay_waypoints
+
+                    right_waypoint_pos = th.vstack([th.tensor(wp.pose[4:7, 3]) for wp in right_waypoints])
+                    right_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[4:7, 0:3])) for wp in right_waypoints])
+
+                    left_waypoint_pos, right_waypoint_pos = self._pad_tensors(left_waypoint_pos, right_waypoint_pos)
+                    left_waypoint_ori, right_waypoint_ori = self._pad_tensors(left_waypoint_ori, right_waypoint_ori)
+
+                    left_waypoint_pos = self._subsample_tensor(left_waypoint_pos)
+                    left_waypoint_ori = self._subsample_tensor(left_waypoint_ori)
+                    right_waypoint_pos = self._subsample_tensor(right_waypoint_pos)
+                    right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
+
+                # In case reachability test is done for only the last MP waypoint
+                else:
+                    left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+                    left_waypoint = left_mp_waypoints[-1]
+                    left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
+                    right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+                    right_waypoint = right_mp_waypoints[-1]
+                    right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
+
+                eef_pose = {
+                    "left": (left_waypoint_pos, left_waypoint_ori),
+                    "right": (right_waypoint_pos, right_waypoint_ori)
+                }
+
+                if object_ref["arm_right"] is None:
+                    eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori)}
+                elif object_ref["arm_left"] is None:
+                    eef_pose = {"right": (right_waypoint_pos, right_waypoint_ori)}
+                else:
+                    eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori), "right": (right_waypoint_pos, right_waypoint_ori)}
+
+                # Check reachability. Three options:
+                # 1. Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
+                # pro: We care about a collision-free IK solution, which this computes. Alternative approach is not that efficient and accurate as you'll see
+                # con: Does not verify for replay waypoints. Which means reaply waypoitns could be unreacahble. This typically won't happen as replay is pretty small deltas
+                # 2. Use IK check without collision and use all (last MP waypoint + replay waypoints). Set the arm position from the returned IK solution for first target pose
+                # (last waypoint of MP) and check for collision.
+                # pro: Verifies for replay waypoints. 
+                # con: If the chosen IK solution is not collision-free, but there exists one that wasn't chosen, we unnecessarily fail this check.
+                # 3. Do IK check with collision for last MP wayoint and IK check without collision for replay waypoints. Might be overkill so only use this if needed.
+                # retval = env.primitive._ik_solver_cartesian_to_joint_space(target_pose=eef_pose,
+                #                                                         initial_joint_pos=env.robot.get_joint_positions(),
+                #                                                         skip_obstacle_update=False,
+                #                                                         ik_world_collision_check=True,
+                #                                                         emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO)
+                
+                eyes_pose = env.robot.links["eyes"].get_position_orientation()
+                reachable_and_visible = env.primitive._target_in_reach_of_robot_and_visible(target_pose=eef_pose,
+                                                                        initial_joint_pos=env.robot.get_joint_positions(),
+                                                                        skip_obstacle_update=False,
+                                                                        ik_world_collision_check=True,
+                                                                        emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO,
+                                                                        attach_obj=True,
+                                                                        eyes_pose=eyes_pose,)
+                # ======================== End of reachibility and visibility check =========================
+                
+                
+                # 1. If object is not reacable or visible, add a navigation phase
+                if not reachable_and_visible:
+                    print("=========== Navigation phase ===========")
+                    # Execute the navigation trajectory and collect data.
+                    exec_results = traj_to_execute.execute(
+                        env=env,
+                        env_interface=env_interface,
+                        render=render,
+                        video_writer=video_writer,
+                        video_skip=video_skip,
+                        camera_names=camera_names,
+                        bimanual=self.bimanual,
+                        cur_subtask_end_step_MP=MP_end_steps,
+                        # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
+                        attached_obj=attached_obj_dict,
+                        phase_type="navigation",
+                        object_ref=object_ref,
+                        enable_marker_vis=enable_marker_vis,
+                        ds_ratio=ds_ratio,
+                        grasp_init_views_video_writer=grasp_init_views_video_writer,
+                        phase_logs=phase_logs,
+                    )
+                    # To let any remaining simulation steps finish.
+                    for _ in range(50): og.sim.step()
+                
+                    # This means that the the current phase failed 
+                    if exec_results is None:
+                        # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
+                        if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:
+                            if len(generated_actions) > 0:
+                                generated_actions = np.concatenate(generated_actions, axis=0)
+                                generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
+                            results = dict(
+                                initial_state=new_initial_state,
+                                states=generated_states,
+                                observations=generated_obs,
+                                datagen_infos=generated_datagen_infos,
+                                actions=generated_actions,
+                                success=generated_success,
+                                src_demo_inds=generated_src_demo_inds,
+                                src_demo_labels=generated_src_demo_labels,
+                                mp_end_steps=generated_demo_mp_end_steps,
+                                subtask_lengths=generated_demo_subtask_lengths,
+                                sensor_info=sensor_info,
+                                partial=True,
+                                phases_completed=env.phases_completed_wo_mp_err,
+                                left_mp_ranges=generated_demo_left_mp_ranges,
+                                right_mp_ranges=generated_demo_right_mp_ranges,
+                                phase_logs=phase_logs,
+                            )
+                            return results
+                        else:
+                            return None
+
+                    # check that trajectory is non-empty
+                    if len(exec_results["states"]) > 0:
+                        generated_states += exec_results["states"]
+                        generated_obs += exec_results["observations"]
+                        generated_datagen_infos += exec_results["datagen_infos"]
+                        generated_actions.append(exec_results["actions"])
+                        generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
+                        if exec_results["left_mp_ranges"] is not None:
+                            generated_demo_left_mp_ranges.append(exec_results["left_mp_ranges"])
+                        if exec_results["right_mp_ranges"] is not None:
+                            generated_demo_right_mp_ranges.append(exec_results["right_mp_ranges"])
+                        generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
+                        generated_success = generated_success or exec_results["success"]
+                        generated_src_demo_inds.append(selected_src_demo_ind)
+                        generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
+
+                    
+                # 2. Now we can execute the manipulation segment
+                print("=========== Manipulation phase ===========")
+                # Execute the manipulation trajectory and collect data.
                 exec_results = traj_to_execute.execute(
                     env=env,
                     env_interface=env_interface,
@@ -745,15 +869,16 @@ class DataGenerator(object):
                     enable_marker_vis=enable_marker_vis,
                     ds_ratio=ds_ratio,
                     grasp_init_views_video_writer=grasp_init_views_video_writer,
-                    current_phase_logs=phase_logs[current_phase_ind],
+                    phase_logs=phase_logs,
                 )
                 # To let any remaining simulation steps finish.
                 for _ in range(50): og.sim.step()
-                
-                # This means that the the current subtask in the current phase failed
+                # breakpoint()
+            
+                # This means that the the current phase failed 
                 if exec_results is None:
                     # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
-                    if not no_partial_tasks and current_phase_ind > 0:
+                    if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:
                         if len(generated_actions) > 0:
                             generated_actions = np.concatenate(generated_actions, axis=0)
                             generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
@@ -770,7 +895,7 @@ class DataGenerator(object):
                             subtask_lengths=generated_demo_subtask_lengths,
                             sensor_info=sensor_info,
                             partial=True,
-                            phases_completed=current_phase_ind, # Not adding 1 here because the current phase failed
+                            phases_completed=env.phases_completed_wo_mp_err,
                             left_mp_ranges=generated_demo_left_mp_ranges,
                             right_mp_ranges=generated_demo_right_mp_ranges,
                             phase_logs=phase_logs,
@@ -795,9 +920,6 @@ class DataGenerator(object):
                     generated_src_demo_inds.append(selected_src_demo_ind)
                     generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
 
-                # remember last trajectory
-                prev_executed_traj = traj_to_execute
-
                 if pause_subtask:
                     input("Pausing after subtask {} execution. Press any key to continue...".format(subtask_ind))
 
@@ -820,11 +942,9 @@ class DataGenerator(object):
             subtask_lengths=generated_demo_subtask_lengths,
             sensor_info=sensor_info,
             partial=False,
-            phases_completed=current_phase_ind+1,
+            phases_completed=env.phases_completed_wo_mp_err,
             left_mp_ranges=generated_demo_left_mp_ranges,
             right_mp_ranges=generated_demo_right_mp_ranges,
             phase_logs=phase_logs,
         )
-        # import pdb; pdb.set_trace()
-        # print('before returning the results')
         return results

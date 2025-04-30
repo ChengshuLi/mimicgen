@@ -152,7 +152,7 @@ def generate_dataset(
     mg_config,
     auto_remove_exp=False,
     render=False,
-    video_path=None,
+    no_save_video=False,
     video_skip=5,
     render_image_names=None,
     pause_subtask=False,
@@ -173,8 +173,7 @@ def generate_dataset(
 
         render (bool): if True, render each data generation attempt on-screen
 
-        video_path (str or None): if provided, render the data generation attempts to the 
-            provided video path
+        no_save_video (bool): if True, don't save video of data generation attempts 
 
         video_skip (int): skip every nth frame when writing video
 
@@ -189,7 +188,7 @@ def generate_dataset(
     script_start_time = time.time()
 
     # check some args
-    write_video = (video_path is not None)
+    write_video = not no_save_video
     assert not (render and write_video) # either on-screen or video but not both
     if pause_subtask:
         assert render, "should enable on-screen rendering for pausing to be useful"
@@ -374,33 +373,14 @@ def generate_dataset(
     # we will keep generating data until @num_trials successes (if @guarantee_success) else @num_trials attempts
     num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
-
-    # TODO: need to make this specialized for different tasks
-    # including changing the properties of different objects
-
-    # notebook = env.env.scene.object_registry("name", "notebook")
-    # notebook.links['base_link'].density = 10
-
-    # coffee_cup.links['base_link'].friction = 0.01 # friction is not in the link object
-
-    # giftbox = env.scene.object_registry("name", "gift_box")
-    # giftbox.links['base_link'].density = 100
-
-    # coffee_cup = env.env.scene.object_registry("name", "coffee_cup")
-    # coffee_cup.links['base_link'].density = 30
-
-    # paper_cup = env.env.scene.object_registry("name", "paper_cup")
-    # paper_cup.links['base_link'].density = 100
-
-    # og.sim.play()
-    # og.sim.load_state(state)
-    # for _ in range(10): og.sim.step()
     
     grasp_init_views_video_writer = None
     if write_video:
-        run_dir = os.getcwd()
-        os.makedirs(f"{run_dir}/debug_videos/{video_path}", exist_ok=True) 
-        grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
+        # grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
+        # video_writer_cameras = ["ego_camera", "camera_1", "camera_2", "camera_3", "static_camera"] 
+        # for camera_name in video_writer_cameras:
+        #     os.makedirs(f"{new_dataset_folder_path}/videos/{camera_name}", exist_ok=True) 
+        os.makedirs(f"{new_dataset_folder_path}/videos", exist_ok=True) 
     
     base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures = 0, 0, 0, 0, 0, 0
     obj_visible_at_start_of_manip = 0
@@ -412,13 +392,17 @@ def generate_dataset(
         "phases_completed": [],
         "phase_logs": [],
     }
+
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
 
         # we might write a video to show the data generation attempts
         video_writer = None
         if write_video:
-            video_writer = imageio.get_writer(f"debug_videos/{video_path}/{num_attempts:04d}.mp4", fps=20)
+            video_writer = imageio.get_writer(f"{new_dataset_folder_path}/videos/{num_attempts:04d}.mp4", fps=20)
+            # # TODO: if we want to write a video for each camera, we need to create a video writer for each camera
+            # for camera_name in video_writer_cameras:
+            #     video_writers = imageio.get_writer(f"{new_dataset_folder_path}/{num_attempts:04d}.mp4", fps=20)
 
         # generate trajectory
         try:
@@ -436,7 +420,7 @@ def generate_dataset(
                 pause_subtask=pause_subtask,
                 enable_marker_vis=enable_marker_vis,
                 ds_ratio=ds_ratio,
-                grasp_init_views_video_writer=grasp_init_views_video_writer,
+                grasp_init_views_video_writer=None,
                 no_partial_tasks=no_partial_tasks,
             )
             episode_time_taken = time.time() - episode_start_time
@@ -773,7 +757,7 @@ def main(args):
             mg_config=mg_config,
             auto_remove_exp=args.auto_remove_exp,
             render=args.render,
-            video_path=args.video_path,
+            no_save_video=args.no_video_save,
             video_skip=args.video_skip,
             render_image_names=args.render_image_names,
             pause_subtask=args.pause_subtask,
@@ -821,10 +805,9 @@ if __name__ == "__main__":
         help="render each data generation attempt on-screen",
     )
     parser.add_argument(
-        "--video_path",
-        type=str,
-        default=None,
-        help="if provided, render the data generation attempts to the provided video path",
+        "--no_video_save",
+        action='store_true',
+        help="if provided, don't save video of data generation attempts",
     )
     parser.add_argument(
         "--video_skip",
