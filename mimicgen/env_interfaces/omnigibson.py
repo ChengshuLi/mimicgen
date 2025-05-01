@@ -348,6 +348,13 @@ class OmniGibsonInterfaceBimanual(OmniGibsonInterface):
             q = control_dict["joint_position"][manipulation_dof_idx]
             q_lower_limit = arm_controller._control_limits[ControlType.get_type("position")][0][manipulation_dof_idx]
             q_upper_limit = arm_controller._control_limits[ControlType.get_type("position")][1][manipulation_dof_idx]
+
+            percentile = 0.95
+            q_range = q_upper_limit - q_lower_limit
+            q_lower_limit = q_lower_limit + (1 - percentile) / 2 * q_range
+            q_upper_limit = q_upper_limit - (1 - percentile) / 2 * q_range
+            q = np.clip(q, q_lower_limit, q_upper_limit)
+
             q_dot_lower_limit = arm_controller._control_limits[ControlType.get_type("velocity")][0][manipulation_dof_idx]
             q_dot_upper_limit = arm_controller._control_limits[ControlType.get_type("velocity")][1][manipulation_dof_idx]
 
