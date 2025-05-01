@@ -374,7 +374,7 @@ def generate_dataset(
     num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
     
-    grasp_init_views_video_writer = None
+    # grasp_init_views_video_writer = None
     if write_video:
         # grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
         # video_writer_cameras = ["ego_camera", "camera_1", "camera_2", "camera_3", "static_camera"] 
@@ -687,8 +687,8 @@ def generate_dataset(
     json_file_path = os.path.join(new_dataset_folder_path, "important_stats.json")
     MG_FileUtils.write_json(json_dic=final_important_stats, json_path=json_file_path)
 
-    if write_video:
-        grasp_init_views_video_writer.close()
+    # if write_video:
+    #     grasp_init_views_video_writer.close()
     
     # NOTE: we are not currently saving the choice of source human demonstrations for each trial,
     #       but you can do that if you wish -- the information is stored in @selected_src_demo_inds_all
