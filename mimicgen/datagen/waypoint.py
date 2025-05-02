@@ -880,7 +880,7 @@ class WaypointTrajectory(object):
                     eyes_target_quat = obj_pose[1]
                 
                 # For manipulation, doing multiple tries does not help much (observed empirically). So, we set num_tries to 1
-                num_tries = 1
+                num_tries = 3
                 arm_mp_trial = 0
                 new_target_pos = copy.deepcopy(target_pos)
                 while True:

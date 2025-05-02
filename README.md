@@ -17,7 +17,7 @@ b. mimicgen/mimicgen/configs/omnigibson.py
 
 3. Run playback to visualize the collected data: (Use this to annotate the subtasks and MP end steps)
 
-Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual 
+Run: python mimicgen/scripts/prepare_src_dataset.py --dataset /home/arpit/test_projects/OmniGibson/teleop_collected_data/tidy_table_0.hdf5 --env_interface MG_R1TidyTable --env_interface_type omnigibson_bimanual --filter_key use
 
 Add --filter_key use in case want to use selected demos for data gen
 
