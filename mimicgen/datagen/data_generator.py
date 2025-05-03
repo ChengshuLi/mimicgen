@@ -342,6 +342,28 @@ class DataGenerator(object):
         annotations = None
         return annotations
 
+    def obtain_attached_object(self, env, robot, attached_obj_new={}, attached_obj_scale={}):
+        attached_object_names = {}
+        for local_arm_side in ["left", "right"]:  
+            is_grasping = robot.is_grasping(arm=local_arm_side)
+            # print("local_arm_side is_grasping: ", local_arm_side, is_grasping)
+            if is_grasping == og.controllers.IsGraspingState.TRUE: 
+                # Find the object that the robot is grapsing in that arm
+                task_relevant_objs = env._get_task_relevant_objs()
+                for task_relevant_obj in task_relevant_objs:
+                    # TODO: remove the stationay object hardcoding. Make it more general
+                    if all(keyword not in task_relevant_obj.name for keyword in ["table", "shelf", "bar", "sink"]):
+                        is_grasping_candidate_obj = robot.is_grasping(arm=local_arm_side, candidate_obj=task_relevant_obj)
+                        # print("local_arm_side is_grasping_candidate_obj: ", local_arm_side, is_grasping_candidate_obj, task_relevant_obj.root_link.name) 
+                        if is_grasping_candidate_obj == og.controllers.IsGraspingState.TRUE:
+                            print(f"arm {local_arm_side} is_grasping {task_relevant_obj.root_link.name}") 
+                            attached_obj_new[f"{local_arm_side}_eef_link"] = task_relevant_obj.root_link
+                            attached_obj_scale[f"{local_arm_side}_eef_link"] = 0.9
+                            attached_object_names[local_arm_side] = task_relevant_obj.name
+                            # robot can only be holding one object at a time
+                            break
+        return attached_object_names
+    
     def generate(
         self,
         env,
@@ -469,6 +491,11 @@ class DataGenerator(object):
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]            
             cur_phase_task_spec = self.task_spec[current_phase_ind]
             selected_src_demo_ind = 0 # TODO: since we only have one demo, will need to modify if more demos are available
+            
+            
+            # Obtain the retract type from the template
+            # NOTE: We are currently assuming that the retract type is the same for both arms
+            retract_type = self.task_spec[current_phase_ind][0][0]["retract_type"]
 
             # restructure subtasks indexes and reference objects
             all_subtask_inds = all_subtask_inds_structure[current_phase_ind]
@@ -710,23 +737,7 @@ class DataGenerator(object):
                 robot = env.robot
                 attached_obj_new = {}
                 attached_obj_scale = {}
-                for local_arm_side in ["left", "right"]:  
-                    is_grasping = robot.is_grasping(arm=local_arm_side)
-                    # print("local_arm_side is_grasping: ", local_arm_side, is_grasping)
-                    if is_grasping == og.controllers.IsGraspingState.TRUE: 
-                        # Find the object that the robot is grapsing in that arm
-                        task_relevant_objs = env._get_task_relevant_objs()
-                        for task_relevant_obj in task_relevant_objs:
-                            # TODO: remove the stationay object hardcoding. Make it more general
-                            if all(keyword not in task_relevant_obj.name for keyword in ["table", "shelf", "bar", "sink"]):
-                                is_grasping_candidate_obj = robot.is_grasping(arm=local_arm_side, candidate_obj=task_relevant_obj)
-                                # print("local_arm_side is_grasping_candidate_obj: ", local_arm_side, is_grasping_candidate_obj, task_relevant_obj.root_link.name) 
-                                if is_grasping_candidate_obj == og.controllers.IsGraspingState.TRUE:
-                                    print(f"arm {local_arm_side} is_grasping {task_relevant_obj.root_link.name}") 
-                                    attached_obj_new[f"{local_arm_side}_eef_link"] = task_relevant_obj.root_link
-                                    attached_obj_scale[f"{local_arm_side}_eef_link"] = 0.9
-                                    # robot can only be holding one object at a time
-                                    break
+                self.obtain_attached_object(env, robot, attached_obj_new, attached_obj_scale)
                 if attached_obj_new == {}:
                     attached_obj_new = None
                     attached_obj_scale = None
@@ -897,12 +908,41 @@ class DataGenerator(object):
                         ds_ratio=ds_ratio,
                         grasp_init_views_video_writer=grasp_init_views_video_writer,
                         phase_logs=phase_logs,
+                        retract_type=retract_type
                     )
                     # To let any remaining simulation steps finish.
                     for _ in range(50): og.sim.step()
                     # breakpoint()
                 
-                    # This means that the the current phase failed 
+                    # Early terminate if the expecetd attached obj (according to the template) is not what is actually in the gripper
+                    if current_phase_ind < self.num_phases - 1:
+                        next_phase_task_spec = self.task_spec[current_phase_ind+1]
+                        left_expected_attached_obj = next_phase_task_spec[0][0]["attached_obj"]
+                        right_expected_attached_obj = next_phase_task_spec[1][0]["attached_obj"]
+                        attached_object_names = self.obtain_attached_object(env, env.robot)
+                        attached_object_mismatch = False
+                        # If left eef actually has an object 
+                        if "left" in attached_object_names.keys():
+                            if attached_object_names["left"] != left_expected_attached_obj:
+                                attached_object_mismatch = True
+                        # If left eef actually does not have an object
+                        elif "left" not in attached_object_names.keys():
+                            if left_expected_attached_obj is not None:
+                                attached_object_mismatch = True
+                        # If right eef actually has an object 
+                        if "right" in attached_object_names.keys():
+                            if attached_object_names["right"] != right_expected_attached_obj:
+                                attached_object_mismatch = True
+                        # If right eef actually does not have an object
+                        elif "right" not in attached_object_names.keys():
+                            if right_expected_attached_obj is not None:
+                                attached_object_mismatch = True
+                        
+                        if attached_object_mismatch:
+                            print("Attached object mismatch, terminating early")
+                            exec_results = None
+                    
+                    # This means that the the current phase failed
                     if exec_results is None:
                         # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
                         if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:

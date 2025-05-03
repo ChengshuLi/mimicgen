@@ -226,6 +226,7 @@ class MG_TaskSpec:
         arm='left',
         MP_end_step=None,
         attached_obj=None,
+        retract_type=None,
     ):
         """
         Add subtask to this task spec.
@@ -298,6 +299,7 @@ class MG_TaskSpec:
             arm=arm,
             MP_end_step=MP_end_step,
             attached_obj=attached_obj,
+            retract_type=retract_type,
         ))
     
     def serialize(self):

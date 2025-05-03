@@ -504,6 +504,7 @@ class WaypointTrajectory(object):
         enable_marker_vis=False,
         ds_ratio=1,
         phase_logs=None,
+        retract_type=None
     ):
         """
         Main function to execute the trajectory. Will use env_interface.target_pose_to_action to
@@ -633,12 +634,12 @@ class WaypointTrajectory(object):
                 # breakpoint()
                 # Pass only the eef that has a reference object associated with it (i.e. the arm that is relevant for this sub-step)
                 if object_ref["arm_right"] is None:
-                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"left": eef_pose["left"]}, visibility_constraint=True)
+                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"left": eef_pose["left"]}, visibility_constraint=env.hard_visibility_constraint)
                 elif object_ref["arm_left"] is None:
-                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"right": eef_pose["right"]}, visibility_constraint=True)
+                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"right": eef_pose["right"]}, visibility_constraint=env.hard_visibility_constraint)
                 else:
-                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose=eef_pose, visibility_constraint=True)
-                # action_generator = env.primitive._navigate_to_obj(obj=ref_obj, visibility_constraint=True)
+                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose=eef_pose, visibility_constraint=env.hard_visibility_constraint)
+                # action_generator = env.primitive._navigate_to_obj(obj=ref_obj, visibility_constraint=env.hard_visibility_constraint)
                 
                 init_state = og.sim.dump_state()
                 local_env_step = 0
@@ -874,10 +875,11 @@ class WaypointTrajectory(object):
                 
                 print("ARM MP START")
                 eyes_target_pos, eyes_target_quat = None, None
-                if env.enable_head_tracking:
-                    obj_pose = ref_obj.get_position_orientation()
-                    eyes_target_pos = obj_pose[0]
-                    eyes_target_quat = obj_pose[1]
+                # NOTE: Keep this commented out. We won't be using soft visibility constraint with manipulation for now. As we are using ARM_NO_TORSO mode
+                # if env.soft_visibility_constraint:
+                #     obj_pose = ref_obj.get_position_orientation()
+                #     eyes_target_pos = obj_pose[0]
+                #     eyes_target_quat = obj_pose[1]
                 
                 # For manipulation, doing multiple tries does not help much (observed empirically). So, we set num_tries to 1
                 num_tries = 3
@@ -1190,7 +1192,7 @@ class WaypointTrajectory(object):
                 pose = np.zeros((8, 4))
                 pose[:4, :] = left_waypoint.pose[:4, :]
                 pose[4:, :] = right_waypoint.pose[4:, :]
-                # Temporary fix for only moving the left arm (for single arm tasks) during replay
+                # If one of the arms has no ref object, we set its target pose as the current pose
                 if object_ref["arm_right"] is None:
                     pose[4:, :] = current_right_ee_pose
                 elif object_ref["arm_left"] is None:
@@ -1230,178 +1232,102 @@ class WaypointTrajectory(object):
 
             # =================================================== Arm/Torso Retract ==========================================================
             # TODO: Implement retract based on annotation only
-            print("Starting Retract")
-            retract_torso_only = False
-            current_robot_base_pose_wrt_world = robot.get_position_orientation()
-            # If we retract the left and right eef to the pose at the start of arm MP
-            if env.retract_type == "retract_to_start_of_arm_mp":
-                if object_ref["arm_right"] is None:
-                    arm_side = "left"
+            if retract_type != "no_retract":
+                print("Starting Retract")
+                retract_torso_only = False
+                current_robot_base_pose_wrt_world = robot.get_position_orientation()
+                # If we retract the left and right eef to the pose at the start of arm MP
+                if retract_type == "retract_to_start_of_arm_mp":
+                    if object_ref["arm_right"] is None:
+                        arm_side = "left"
+                        current_left_eef_pose = robot.get_eef_pose("left")
+                        target_pos = {"left_eef_link": initial_left_eef_pose[0]}
+                        # target_quat = {"left_eef_link": current_left_eef_pose[1]} # Retain current orientation
+                        target_quat = {"left_eef_link": initial_left_eef_pose[1]} # Use initial orientation
+                    elif object_ref["arm_left"] is None:
+                        arm_side = "right"
+                        current_right_eef_pose = robot.get_eef_pose("right")
+                        target_pos = {"right_eef_link": initial_right_eef_pose[0]}
+                        # target_quat = {"right_eef_link": current_right_eef_pose[1]} # Retain current orientation
+                        target_quat = {"right_eef_link": initial_right_eef_pose[1]} # Retain initial orientation
+                    # TODO: implement this. Not too important for now as this would never happen. In this case it's a bimanual coordinated and we don't need to retract
+                    else:
+                        pass
+
+                # If we retract the left and right eef and eyes to a canonical pose
+                elif retract_type == "retract_to_canonical_pose":
+                    eyes_reset_pose_wrt_world = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.eyes_reset_pose_wrt_robot)
+                    eyes_reset_pose_wrt_world = T.mat2pose(eyes_reset_pose_wrt_world)
+
+                    left_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.left_eef_reset_pose_wrt_robot)
+                    left_eef_reset_pose_wrt_robot = T.mat2pose(left_eef_reset_pose_wrt_robot)
+
+                    right_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.right_eef_reset_pose_wrt_robot)
+                    right_eef_reset_pose_wrt_robot = T.mat2pose(right_eef_reset_pose_wrt_robot)
+
+                    target_pos = {
+                        "left_eef_link": left_eef_reset_pose_wrt_robot[0],
+                        "right_eef_link": right_eef_reset_pose_wrt_robot[0],
+                        "eyes": eyes_reset_pose_wrt_world[0],
+                    }
+                    target_quat = {
+                        "left_eef_link": left_eef_reset_pose_wrt_robot[1],
+                        "right_eef_link": right_eef_reset_pose_wrt_robot[1],
+                        "eyes": eyes_reset_pose_wrt_world[1],
+                    }
+
+                elif retract_type == "retract_to_canonical_pose_maintain_orn":
+                    eyes_reset_pose_wrt_world = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.eyes_reset_pose_wrt_robot)
+                    eyes_reset_pose_wrt_world = T.mat2pose(eyes_reset_pose_wrt_world)
+
+                    left_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.left_eef_reset_pose_wrt_robot)
+                    left_eef_reset_pose_wrt_robot = T.mat2pose(left_eef_reset_pose_wrt_robot)
                     current_left_eef_pose = robot.get_eef_pose("left")
-                    target_pos = {"left_eef_link": initial_left_eef_pose[0]}
-                    target_quat = {"left_eef_link": current_left_eef_pose[1]} # Retain current orientation
-                    # target_quat = {"left_eef_link": initial_left_eef_pose[1]} # Use initial orientation
-                elif object_ref["arm_left"] is None:
-                    arm_side = "right"
+
+                    right_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.right_eef_reset_pose_wrt_robot)
+                    right_eef_reset_pose_wrt_robot = T.mat2pose(right_eef_reset_pose_wrt_robot)
                     current_right_eef_pose = robot.get_eef_pose("right")
-                    # target_pos = {"right_eef_link": initial_right_eef_pose[0]}
-                    target_quat = {"right_eef_link": current_right_eef_pose[1]} # Retain current orientation
-                    target_quat = {"right_eef_link": initial_right_eef_pose[1]} # Retain initial orientation
-                # TODO: implement this
+
+                    target_pos = {
+                        "left_eef_link": left_eef_reset_pose_wrt_robot[0],
+                        "right_eef_link": right_eef_reset_pose_wrt_robot[0],
+                        "eyes": eyes_reset_pose_wrt_world[0],
+                    }
+                    target_quat = {
+                        "left_eef_link": current_left_eef_pose[1],
+                        "right_eef_link": current_right_eef_pose[1],
+                        "eyes": eyes_reset_pose_wrt_world[1],
+                    }
+
                 else:
-                    pass
-
-            # If we retract the left and right eef and eyes to a canonical pose
-            elif env.retract_type == "retract_to_canonical_pose":
-                eyes_reset_pose_wrt_world = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.eyes_reset_pose_wrt_robot)
-                eyes_reset_pose_wrt_world = T.mat2pose(eyes_reset_pose_wrt_world)
-
-                left_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.left_eef_reset_pose_wrt_robot)
-                left_eef_reset_pose_wrt_robot = T.mat2pose(left_eef_reset_pose_wrt_robot)
-
-                right_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.right_eef_reset_pose_wrt_robot)
-                right_eef_reset_pose_wrt_robot = T.mat2pose(right_eef_reset_pose_wrt_robot)
-
-                target_pos = {
-                    "left_eef_link": left_eef_reset_pose_wrt_robot[0],
-                    "right_eef_link": right_eef_reset_pose_wrt_robot[0],
-                    "eyes": eyes_reset_pose_wrt_world[0],
-                }
-                target_quat = {
-                    "left_eef_link": left_eef_reset_pose_wrt_robot[1],
-                    "right_eef_link": right_eef_reset_pose_wrt_robot[1],
-                    "eyes": eyes_reset_pose_wrt_world[1],
-                }
-
-            elif env.retract_type == "retract_to_canonical_pose_maintain_orn":
-                eyes_reset_pose_wrt_world = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.eyes_reset_pose_wrt_robot)
-                eyes_reset_pose_wrt_world = T.mat2pose(eyes_reset_pose_wrt_world)
-
-                left_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.left_eef_reset_pose_wrt_robot)
-                left_eef_reset_pose_wrt_robot = T.mat2pose(left_eef_reset_pose_wrt_robot)
-                current_left_eef_pose = robot.get_eef_pose("left")
-
-                right_eef_reset_pose_wrt_robot = T.pose2mat(current_robot_base_pose_wrt_world) @ T.pose2mat(env.right_eef_reset_pose_wrt_robot)
-                right_eef_reset_pose_wrt_robot = T.mat2pose(right_eef_reset_pose_wrt_robot)
-                current_right_eef_pose = robot.get_eef_pose("right")
-
-                target_pos = {
-                    "left_eef_link": left_eef_reset_pose_wrt_robot[0],
-                    "right_eef_link": right_eef_reset_pose_wrt_robot[0],
-                    "eyes": eyes_reset_pose_wrt_world[0],
-                }
-                target_quat = {
-                    "left_eef_link": current_left_eef_pose[1],
-                    "right_eef_link": current_right_eef_pose[1],
-                    "eyes": eyes_reset_pose_wrt_world[1],
-                }
+                    raise ValueError(f"Invalid retract type: {retract_type}")
 
 
-            # Aggregate target_pos and target_quat to match batch_size
-            new_target_pos = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_pos.items()}
-            new_target_quat = {
-                k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()
-            }
-            
-            retval = self.obtain_attached_object(env, robot)
-            grasp_action = retval["grasp_action"]
-            attached_obj = retval["attached_obj"]
-            attached_obj_scale = retval["attached_obj_scale"]
-
-            # if enable_marker_vis:
-            #     if arm_side == "left":
-            #         env.eef_goal_marker_left.set_position_orientation(target_pos["left_eef_link"], target_quat["left_eef_link"])
-            #     elif arm_side == "right":
-            #         env.eef_goal_marker_right.set_position_orientation(target_pos["right_eef_link"], target_quat["right_eef_link"])
-            
-            if env.retract_type == "retract_to_start_of_arm_mp":
-                emb_sel = CuRoboEmbodimentSelection.ARM_NO_TORSO
-            elif env.retract_type == "retract_to_canonical_pose":
-                emb_sel = CuRoboEmbodimentSelection.ARM
-            elif env.retract_type == "retract_to_canonical_pose_maintain_orn":
-                emb_sel = CuRoboEmbodimentSelection.ARM
-
-            print("--- attached_obj: ", attached_obj)
-            full_retract_mp_planning_start_time = time.time()
-            mp_results, traj_paths = env.cmg.compute_trajectories(
-                target_pos=new_target_pos,
-                target_quat=new_target_quat,
-                is_local=False,
-                max_attempts=50,
-                timeout=20.0,
-                ik_fail_return=50,
-                enable_finetune_trajopt=True,
-                finetune_attempts=1,
-                return_full_result=True,
-                success_ratio=1.0 / env.primitive._motion_generator.batch_size,
-                attached_obj=attached_obj,
-                attached_obj_scale=attached_obj_scale,
-                emb_sel=emb_sel,
-            )
-            full_retract_mp_planning_finish_time = time.time()
-            phase_logs[env.execution_phase_ind]["full_retract_mp_planning_time"][0] = round(full_retract_mp_planning_finish_time - full_retract_mp_planning_start_time, 2)
-            print("Time taken for full retract MP planning: ", phase_logs[env.execution_phase_ind]["full_retract_mp_planning_time"][0])
-            # breakpoint()
-
-            successes = mp_results[0].success 
-            print("Retract Arm MP successes: ", successes)
-            success_idx = th.where(successes)[0].cpu()
-
-            if len(success_idx) == 0:
-                print(f"Arm retract failed with status {mp_results[0].status}.")
-                # breakpoint()
-                phase_logs[env.execution_phase_ind]["full_retract_mp_err"][0] = mp_results[0].status.value
-                retract_torso_only = True
-            else:
-                phase_logs[env.execution_phase_ind]["full_retract_mp_err"][0] = "None"
-                full_retract_mp_execution_start_time = time.time()
-                traj_path = traj_paths[success_idx[0]]
-
-                q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
-                q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
-                q_traj = q_traj.cpu()
-
-                num_repeat = 1
-                init_left_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
-                init_right_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
-                for j_pos in q_traj:
-                    if env.retract_type == "retract_to_start_of_arm_mp":
-                        if arm_side == "left":
-                            j_pos[robot.arm_control_idx["right"]] = init_right_arm_pos
-                        elif arm_side == "right":
-                            j_pos[robot.arm_control_idx["left"]] = init_left_arm_pos
-
-                    mp_action = robot.q_to_action(j_pos).cpu().numpy()
-                    mp_action[robot.gripper_action_idx["left"]] = grasp_action["left"]
-                    mp_action[robot.gripper_action_idx["right"]] = grasp_action["right"]
-
-                    state = env.get_state()["states"]
-                    obs, obs_info = env.get_obs_IL()
-                    datagen_info = env_interface.get_datagen_info(action=mp_action)
-                    env.step(mp_action, video_writer)
-                    local_env_step += 1
-                    env.global_env_step += 1
-                    states.append(state)
-                    actions.append(mp_action)
-                    observations.append(obs)
-                    datagen_infos.append(datagen_info)
-                    cur_success_metrics = env.is_success()
-                    for k in success:
-                        success[k] = success[k] or cur_success_metrics[k]
-
-                full_retract_mp_execution_finish_time = time.time()
-                phase_logs[env.execution_phase_ind]["full_retract_mp_execution_time"][0] = round(full_retract_mp_execution_finish_time - full_retract_mp_execution_start_time, 2)
-
-            # If full retract failed, try retracting only the torso
-            if retract_torso_only and env.retract_type != "retract_to_start_of_arm_mp":
-                print("Retracting torso only")
-                target_pos = {"eyes": eyes_reset_pose_wrt_world[0]}
-                target_quat = {"eyes": eyes_reset_pose_wrt_world[1]}
-
+                # Aggregate target_pos and target_quat to match batch_size
                 new_target_pos = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_pos.items()}
-                new_target_quat = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()}
+                new_target_quat = {
+                    k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()
+                }
+                
+                retval = self.obtain_attached_object(env, robot)
+                grasp_action = retval["grasp_action"]
+                attached_obj = retval["attached_obj"]
+                attached_obj_scale = retval["attached_obj_scale"]
 
-                torso_retract_mp_planning_start_time = time.time()
+                # if enable_marker_vis:
+                #     if arm_side == "left":
+                #         env.eef_goal_marker_left.set_position_orientation(target_pos["left_eef_link"], target_quat["left_eef_link"])
+                #     elif arm_side == "right":
+                #         env.eef_goal_marker_right.set_position_orientation(target_pos["right_eef_link"], target_quat["right_eef_link"])
+                
+                if retract_type == "retract_to_start_of_arm_mp":
+                    emb_sel = CuRoboEmbodimentSelection.ARM_NO_TORSO
+                elif retract_type == "retract_to_canonical_pose":
+                    emb_sel = CuRoboEmbodimentSelection.ARM
+                elif retract_type == "retract_to_canonical_pose_maintain_orn":
+                    emb_sel = CuRoboEmbodimentSelection.ARM
+
+                full_retract_mp_planning_start_time = time.time()
                 mp_results, traj_paths = env.cmg.compute_trajectories(
                     target_pos=new_target_pos,
                     target_quat=new_target_quat,
@@ -1417,20 +1343,23 @@ class WaypointTrajectory(object):
                     attached_obj_scale=attached_obj_scale,
                     emb_sel=emb_sel,
                 )
-                torso_retract_mp_planning_finish_time = time.time()
-                phase_logs[env.execution_phase_ind]["torso_retract_mp_planning_time"][0] = round(torso_retract_mp_planning_finish_time - torso_retract_mp_planning_start_time, 2)
+                full_retract_mp_planning_finish_time = time.time()
+                phase_logs[env.execution_phase_ind]["full_retract_mp_planning_time"][0] = round(full_retract_mp_planning_finish_time - full_retract_mp_planning_start_time, 2)
+                print("Time taken for full retract MP planning: ", phase_logs[env.execution_phase_ind]["full_retract_mp_planning_time"][0])
+                # breakpoint()
 
                 successes = mp_results[0].success 
-                print("Torso-only retract: Arm MP successes: ", successes)
+                print("Retract Arm MP successes: ", successes)
                 success_idx = th.where(successes)[0].cpu()
 
                 if len(success_idx) == 0:
-                    print(f"Torso retract failed with status {mp_results[0].status}.")
+                    print(f"Arm retract failed with status {mp_results[0].status}.")
                     # breakpoint()
-                    phase_logs[env.execution_phase_ind]["torso_retract_mp_err"][0] = mp_results[0].status.value
+                    phase_logs[env.execution_phase_ind]["full_retract_mp_err"][0] = mp_results[0].status.value
+                    retract_torso_only = True
                 else:
-                    phase_logs[env.execution_phase_ind]["torso_retract_mp_err"][0] = "None"
-                    torso_retract_mp_execution_start_time = time.time()
+                    phase_logs[env.execution_phase_ind]["full_retract_mp_err"][0] = "None"
+                    full_retract_mp_execution_start_time = time.time()
                     traj_path = traj_paths[success_idx[0]]
 
                     q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
@@ -1441,12 +1370,15 @@ class WaypointTrajectory(object):
                     init_left_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
                     init_right_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
                     for j_pos in q_traj:
+                        if retract_type == "retract_to_start_of_arm_mp":
+                            if arm_side == "left":
+                                j_pos[robot.arm_control_idx["right"]] = init_right_arm_pos
+                            elif arm_side == "right":
+                                j_pos[robot.arm_control_idx["left"]] = init_left_arm_pos
+
                         mp_action = robot.q_to_action(j_pos).cpu().numpy()
                         mp_action[robot.gripper_action_idx["left"]] = grasp_action["left"]
                         mp_action[robot.gripper_action_idx["right"]] = grasp_action["right"]
-                        # Don't want to move the arm relative to the torso
-                        mp_action[robot.arm_action_idx["right"]] = init_right_arm_pos
-                        mp_action[robot.arm_action_idx["left"]] = init_left_arm_pos
 
                         state = env.get_state()["states"]
                         obs, obs_info = env.get_obs_IL()
@@ -1461,9 +1393,82 @@ class WaypointTrajectory(object):
                         cur_success_metrics = env.is_success()
                         for k in success:
                             success[k] = success[k] or cur_success_metrics[k]
-                    
-                    torso_retract_mp_execution_finish_time = time.time()
-                    phase_logs[env.execution_phase_ind]["torso_retract_mp_execution_time"][0] = round(torso_retract_mp_execution_finish_time - torso_retract_mp_execution_start_time, 2)
+
+                    full_retract_mp_execution_finish_time = time.time()
+                    phase_logs[env.execution_phase_ind]["full_retract_mp_execution_time"][0] = round(full_retract_mp_execution_finish_time - full_retract_mp_execution_start_time, 2)
+
+                # If full retract failed, try retracting only the torso
+                if retract_torso_only and retract_type != "retract_to_start_of_arm_mp":
+                    print("Retracting torso only")
+                    target_pos = {"eyes": eyes_reset_pose_wrt_world[0]}
+                    target_quat = {"eyes": eyes_reset_pose_wrt_world[1]}
+
+                    new_target_pos = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_pos.items()}
+                    new_target_quat = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()}
+
+                    torso_retract_mp_planning_start_time = time.time()
+                    mp_results, traj_paths = env.cmg.compute_trajectories(
+                        target_pos=new_target_pos,
+                        target_quat=new_target_quat,
+                        is_local=False,
+                        max_attempts=50,
+                        timeout=20.0,
+                        ik_fail_return=50,
+                        enable_finetune_trajopt=True,
+                        finetune_attempts=1,
+                        return_full_result=True,
+                        success_ratio=1.0 / env.primitive._motion_generator.batch_size,
+                        attached_obj=attached_obj,
+                        attached_obj_scale=attached_obj_scale,
+                        emb_sel=emb_sel,
+                    )
+                    torso_retract_mp_planning_finish_time = time.time()
+                    phase_logs[env.execution_phase_ind]["torso_retract_mp_planning_time"][0] = round(torso_retract_mp_planning_finish_time - torso_retract_mp_planning_start_time, 2)
+
+                    successes = mp_results[0].success 
+                    print("Torso-only retract: Arm MP successes: ", successes)
+                    success_idx = th.where(successes)[0].cpu()
+
+                    if len(success_idx) == 0:
+                        print(f"Torso retract failed with status {mp_results[0].status}.")
+                        # breakpoint()
+                        phase_logs[env.execution_phase_ind]["torso_retract_mp_err"][0] = mp_results[0].status.value
+                    else:
+                        phase_logs[env.execution_phase_ind]["torso_retract_mp_err"][0] = "None"
+                        torso_retract_mp_execution_start_time = time.time()
+                        traj_path = traj_paths[success_idx[0]]
+
+                        q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
+                        q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
+                        q_traj = q_traj.cpu()
+
+                        num_repeat = 1
+                        init_left_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
+                        init_right_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
+                        for j_pos in q_traj:
+                            mp_action = robot.q_to_action(j_pos).cpu().numpy()
+                            mp_action[robot.gripper_action_idx["left"]] = grasp_action["left"]
+                            mp_action[robot.gripper_action_idx["right"]] = grasp_action["right"]
+                            # Don't want to move the arm relative to the torso
+                            mp_action[robot.arm_action_idx["right"]] = init_right_arm_pos
+                            mp_action[robot.arm_action_idx["left"]] = init_left_arm_pos
+
+                            state = env.get_state()["states"]
+                            obs, obs_info = env.get_obs_IL()
+                            datagen_info = env_interface.get_datagen_info(action=mp_action)
+                            env.step(mp_action, video_writer)
+                            local_env_step += 1
+                            env.global_env_step += 1
+                            states.append(state)
+                            actions.append(mp_action)
+                            observations.append(obs)
+                            datagen_infos.append(datagen_info)
+                            cur_success_metrics = env.is_success()
+                            for k in success:
+                                success[k] = success[k] or cur_success_metrics[k]
+                        
+                        torso_retract_mp_execution_finish_time = time.time()
+                        phase_logs[env.execution_phase_ind]["torso_retract_mp_execution_time"][0] = round(torso_retract_mp_execution_finish_time - torso_retract_mp_execution_start_time, 2)
             # ================================================== End of Arm/Torso Retract ==========================================================
                     
             results = dict(
