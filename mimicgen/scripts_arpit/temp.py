@@ -41,9 +41,9 @@ import numpy as np
 # # ============ Obtain stats from data gen ==============
 
 # # file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_no_joint_limit/demo_src_r1_dishes_away_task_D0/logs/attempt_000053_succ_13_rate_24.53.json"
-# file_path = "/home/arpit/test_projects/mimicgen/combined_important_stats.json"
-# with open(file_path, 'r') as f:
-#     data = json.load(f)
+file_path = "/home/arpit/test_projects/mimicgen/datasets/eric/r1_dishes_away_combined_important_stats.json"
+with open(file_path, 'r') as f:
+    data = json.load(f)
 # breakpoint()
 
 # phases_completed = np.array(data["all_episode_logs"]["phases_completed"])
@@ -61,7 +61,6 @@ import numpy as np
 
 # unique_elements, counts = np.unique(phases_completed, return_counts=True)
 # frequency = dict(zip(unique_elements, counts))
-
 # indices = np.where(phases_completed == 3)[0]
 
 # counter = 0
@@ -90,6 +89,9 @@ import numpy as np
 # for idx in range(len(data["all_episode_logs"]["episode_number"])):
 #     if not data["all_episode_logs"]["task_success"][idx] and data["all_episode_logs"]["err_status"][idx] == "None":
 #         print("idx: ", idx)
+
+# Obtain time taken for all ep
+print("mean time taken for all ep: ", np.median(data["all_episode_logs"]["time_taken"]))
 
 # # Obtain time taken for ep with no MP failure
 # lis = list()

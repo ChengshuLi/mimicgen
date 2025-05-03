@@ -482,11 +482,6 @@ class DataGenerator(object):
             # # remove later
             # if current_phase_ind > 0:
             #     break
-
-            # for debugging
-            if env.manipulation_only:
-                if current_phase_ind == 0:
-                    continue
                         
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]            
             cur_phase_task_spec = self.task_spec[current_phase_ind]
@@ -702,118 +697,123 @@ class DataGenerator(object):
                     # TODO: need to change the attached_obj_dict as well
                 
                 
-                # ========== Check reachibility and visibility of the reference object ==============
-                check_only_last_mp_waypoint = True
-                reachable, visible = False, False
+                if not env.manipulation_only:
+                    # ========== Check reachibility and visibility of the reference object ==============
+                    check_only_last_mp_waypoint = True
+                    reachable, visible = False, False
 
-                seq = traj_to_execute.waypoint_sequences[0]
-                cur_subtask_end_step_MP = MP_end_steps
-                
-                # FIXME: If both are not None, currently setting right arm as the reference object. Fix this to account for both ref objects
-                if object_ref["arm_right"] is None:
-                    ref_object = object_ref["arm_left"]
-                elif object_ref["arm_left"] is None:
-                    ref_object = object_ref["arm_right"]
+                    seq = traj_to_execute.waypoint_sequences[0]
+                    cur_subtask_end_step_MP = MP_end_steps
+                    
+                    # FIXME: If both are not None, currently setting right arm as the reference object. Fix this to account for both ref objects
+                    if object_ref["arm_right"] is None:
+                        ref_object = object_ref["arm_left"]
+                    elif object_ref["arm_left"] is None:
+                        ref_object = object_ref["arm_right"]
+                    else:
+                        ref_object = object_ref["arm_right"]
+                    
+                    ref_obj = env.env.scene.object_registry("name", ref_object)
+                    env.primitive._tracking_object = ref_obj
+                    print("Will track object for this sub-step: ", ref_obj.name)
+
+                    # # Option 1: Inform primitive stack about attached object for this phase
+                    # if attached_obj_dict is None:
+                    #     env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
+                    # else:
+                    #     attached_obj_new = {}
+                    #     attached_obj_scale = {}
+                    #     for arm, obj_name in attached_obj_dict.items():
+                    #         if obj_name is not None:
+                    #             attached_obj_new[env.robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
+                    #             attached_obj_scale[env.robot.eef_link_names[arm]] = 0.9
+                    #     env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+
+                    # Option 2:
+                    robot = env.robot
+                    attached_obj_new = {}
+                    attached_obj_scale = {}
+                    self.obtain_attached_object(env, robot, attached_obj_new, attached_obj_scale)
+                    if attached_obj_new == {}:
+                        attached_obj_new = None
+                        attached_obj_scale = None
+                    env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+                    
+                    # In case reachability test is done for all eef poses (last MP waypoint + replay waypoints)
+                    if not check_only_last_mp_waypoint:
+                        left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+                        left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
+                        left_mp_last_waypoint = left_mp_waypoints[-1]
+                        left_waypoints = [left_mp_last_waypoint] + left_replay_waypoints
+
+                        left_waypoint_pos = th.vstack([th.tensor(wp.pose[0:3, 3]) for wp in left_waypoints])
+                        left_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[0:3, 0:3])) for wp in left_waypoints])
+
+                        right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+                        right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
+                        right_mp_last_waypoint = right_mp_waypoints[-1]
+                        right_waypoints = [right_mp_last_waypoint] + right_replay_waypoints
+
+                        right_waypoint_pos = th.vstack([th.tensor(wp.pose[4:7, 3]) for wp in right_waypoints])
+                        right_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[4:7, 0:3])) for wp in right_waypoints])
+
+                        left_waypoint_pos, right_waypoint_pos = self._pad_tensors(left_waypoint_pos, right_waypoint_pos)
+                        left_waypoint_ori, right_waypoint_ori = self._pad_tensors(left_waypoint_ori, right_waypoint_ori)
+
+                        left_waypoint_pos = self._subsample_tensor(left_waypoint_pos)
+                        left_waypoint_ori = self._subsample_tensor(left_waypoint_ori)
+                        right_waypoint_pos = self._subsample_tensor(right_waypoint_pos)
+                        right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
+
+                    # In case reachability test is done for only the last MP waypoint
+                    else:
+                        left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+                        left_waypoint = left_mp_waypoints[-1]
+                        left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
+                        right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+                        right_waypoint = right_mp_waypoints[-1]
+                        right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
+
+                    eef_pose = {
+                        "left": (left_waypoint_pos, left_waypoint_ori),
+                        "right": (right_waypoint_pos, right_waypoint_ori)
+                    }
+
+                    if object_ref["arm_right"] is None:
+                        eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori)}
+                    elif object_ref["arm_left"] is None:
+                        eef_pose = {"right": (right_waypoint_pos, right_waypoint_ori)}
+                    else:
+                        eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori), "right": (right_waypoint_pos, right_waypoint_ori)}
+
+                    # Check reachability. Three options:
+                    # 1. Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
+                    # pro: We care about a collision-free IK solution, which this computes. Alternative approach is not that efficient and accurate as you'll see
+                    # con: Does not verify for replay waypoints. Which means reaply waypoitns could be unreacahble. This typically won't happen as replay is pretty small deltas
+                    # 2. Use IK check without collision and use all (last MP waypoint + replay waypoints). Set the arm position from the returned IK solution for first target pose
+                    # (last waypoint of MP) and check for collision.
+                    # pro: Verifies for replay waypoints. 
+                    # con: If the chosen IK solution is not collision-free, but there exists one that wasn't chosen, we unnecessarily fail this check.
+                    # 3. Do IK check with collision for last MP wayoint and IK check without collision for replay waypoints. Might be overkill so only use this if needed.
+                    # retval = env.primitive._ik_solver_cartesian_to_joint_space(target_pose=eef_pose,
+                    #                                                         initial_joint_pos=env.robot.get_joint_positions(),
+                    #                                                         skip_obstacle_update=False,
+                    #                                                         ik_world_collision_check=True,
+                    #                                                         emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO)
+                    
+                    eyes_pose = env.robot.links["eyes"].get_position_orientation()
+                    reachable_and_visible = env.primitive._target_in_reach_of_robot_and_visible(target_pose=eef_pose,
+                                                                            initial_joint_pos=env.robot.get_joint_positions(),
+                                                                            skip_obstacle_update=False,
+                                                                            ik_world_collision_check=True,
+                                                                            emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO,
+                                                                            attach_obj=True,
+                                                                            eyes_pose=eyes_pose,)
+                    print("object to be manipulated is reachable and visible: ", reachable_and_visible)
+                    # ======================== End of reachibility and visibility check =========================
+                # If we are in the debugging mode of "manipulation_only" for pick_cup task, don't check reachability and visibility
                 else:
-                    ref_object = object_ref["arm_right"]
-                
-                ref_obj = env.env.scene.object_registry("name", ref_object)
-                env.primitive._tracking_object = ref_obj
-                print("Will track object for this sub-step: ", ref_obj.name)
-
-                # # Option 1: Inform primitive stack about attached object for this phase
-                # if attached_obj_dict is None:
-                #     env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
-                # else:
-                #     attached_obj_new = {}
-                #     attached_obj_scale = {}
-                #     for arm, obj_name in attached_obj_dict.items():
-                #         if obj_name is not None:
-                #             attached_obj_new[env.robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
-                #             attached_obj_scale[env.robot.eef_link_names[arm]] = 0.9
-                #     env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
-
-                # Option 2:
-                robot = env.robot
-                attached_obj_new = {}
-                attached_obj_scale = {}
-                self.obtain_attached_object(env, robot, attached_obj_new, attached_obj_scale)
-                if attached_obj_new == {}:
-                    attached_obj_new = None
-                    attached_obj_scale = None
-                env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
-                
-                # In case reachability test is done for all eef poses (last MP waypoint + replay waypoints)
-                if not check_only_last_mp_waypoint:
-                    left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
-                    left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
-                    left_mp_last_waypoint = left_mp_waypoints[-1]
-                    left_waypoints = [left_mp_last_waypoint] + left_replay_waypoints
-
-                    left_waypoint_pos = th.vstack([th.tensor(wp.pose[0:3, 3]) for wp in left_waypoints])
-                    left_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[0:3, 0:3])) for wp in left_waypoints])
-
-                    right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
-                    right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
-                    right_mp_last_waypoint = right_mp_waypoints[-1]
-                    right_waypoints = [right_mp_last_waypoint] + right_replay_waypoints
-
-                    right_waypoint_pos = th.vstack([th.tensor(wp.pose[4:7, 3]) for wp in right_waypoints])
-                    right_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[4:7, 0:3])) for wp in right_waypoints])
-
-                    left_waypoint_pos, right_waypoint_pos = self._pad_tensors(left_waypoint_pos, right_waypoint_pos)
-                    left_waypoint_ori, right_waypoint_ori = self._pad_tensors(left_waypoint_ori, right_waypoint_ori)
-
-                    left_waypoint_pos = self._subsample_tensor(left_waypoint_pos)
-                    left_waypoint_ori = self._subsample_tensor(left_waypoint_ori)
-                    right_waypoint_pos = self._subsample_tensor(right_waypoint_pos)
-                    right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
-
-                # In case reachability test is done for only the last MP waypoint
-                else:
-                    left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
-                    left_waypoint = left_mp_waypoints[-1]
-                    left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
-                    right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
-                    right_waypoint = right_mp_waypoints[-1]
-                    right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
-
-                eef_pose = {
-                    "left": (left_waypoint_pos, left_waypoint_ori),
-                    "right": (right_waypoint_pos, right_waypoint_ori)
-                }
-
-                if object_ref["arm_right"] is None:
-                    eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori)}
-                elif object_ref["arm_left"] is None:
-                    eef_pose = {"right": (right_waypoint_pos, right_waypoint_ori)}
-                else:
-                    eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori), "right": (right_waypoint_pos, right_waypoint_ori)}
-
-                # Check reachability. Three options:
-                # 1. Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
-                # pro: We care about a collision-free IK solution, which this computes. Alternative approach is not that efficient and accurate as you'll see
-                # con: Does not verify for replay waypoints. Which means reaply waypoitns could be unreacahble. This typically won't happen as replay is pretty small deltas
-                # 2. Use IK check without collision and use all (last MP waypoint + replay waypoints). Set the arm position from the returned IK solution for first target pose
-                # (last waypoint of MP) and check for collision.
-                # pro: Verifies for replay waypoints. 
-                # con: If the chosen IK solution is not collision-free, but there exists one that wasn't chosen, we unnecessarily fail this check.
-                # 3. Do IK check with collision for last MP wayoint and IK check without collision for replay waypoints. Might be overkill so only use this if needed.
-                # retval = env.primitive._ik_solver_cartesian_to_joint_space(target_pose=eef_pose,
-                #                                                         initial_joint_pos=env.robot.get_joint_positions(),
-                #                                                         skip_obstacle_update=False,
-                #                                                         ik_world_collision_check=True,
-                #                                                         emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO)
-                
-                eyes_pose = env.robot.links["eyes"].get_position_orientation()
-                reachable_and_visible = env.primitive._target_in_reach_of_robot_and_visible(target_pose=eef_pose,
-                                                                        initial_joint_pos=env.robot.get_joint_positions(),
-                                                                        skip_obstacle_update=False,
-                                                                        ik_world_collision_check=True,
-                                                                        emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO,
-                                                                        attach_obj=True,
-                                                                        eyes_pose=eyes_pose,)
-                # ======================== End of reachibility and visibility check =========================
+                    reachable_and_visible = True
                 
                 # If manipulation MP fails, we retry nav and manipulation phases but only 1 extra time at max
                 for nav_try in range(env.num_nav_retry_on_arm_mp_failure+1):
