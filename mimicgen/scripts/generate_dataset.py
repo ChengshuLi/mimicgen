@@ -109,6 +109,7 @@ def get_important_stats(
     num_failures,
     num_attempts,
     num_problematic,
+    ep_lengths,
     start_time=None,
     ep_length_stats=None,
     all_episode_logs=None
@@ -138,7 +139,9 @@ def get_important_stats(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
+        ep_lengths=ep_lengths,
         all_episode_logs=all_episode_logs
+
     )
     if (ep_length_stats is not None):
         important_stats.update(ep_length_stats)
@@ -223,7 +226,8 @@ def generate_dataset(
     exist_ok = False
     if os.path.exists(new_dataset_folder_path):
         if not auto_remove_exp:
-            ans = input("\nWARNING: dataset folder ({}) already exists! \noverwrite? (y/n)\n".format(new_dataset_folder_path))
+            # ans = input("\nWARNING: dataset folder ({}) already exists! \noverwrite? (y/n)\n".format(new_dataset_folder_path))
+            ans = "n"
         else:
             ans = "y"
         if ans == "y":
@@ -357,23 +361,6 @@ def generate_dataset(
         D2_sign=D2_sign,
     )
 
-    print("\n==== Created Data Generator ====")
-    print(data_generator)
-    print("")
-
-    # data generation statistics
-    num_success = 0
-    num_failures = 0
-    num_attempts = 0
-    num_problematic = 0
-    ep_lengths = [] # episode lengths for successfully generated data
-    selected_src_demo_inds_all = [] # selected source demo index in @all_demos for each trial
-    selected_src_demo_inds_succ = [] # selected source demo index in @all_demos for each successful trial
-
-    # we will keep generating data until @num_trials successes (if @guarantee_success) else @num_trials attempts
-    num_trials = mg_config.experiment.generation.num_trials
-    guarantee_success = mg_config.experiment.generation.guarantee
-    
     # grasp_init_views_video_writer = None
     if write_video:
         # grasp_init_views_video_writer = imageio.get_writer(f"debug_videos/{video_path}/grasp_init_views.mp4", fps=20)
@@ -381,17 +368,51 @@ def generate_dataset(
         # for camera_name in video_writer_cameras:
         #     os.makedirs(f"{new_dataset_folder_path}/videos/{camera_name}", exist_ok=True) 
         os.makedirs(f"{new_dataset_folder_path}/videos", exist_ok=True) 
+
+    print("\n==== Created Data Generator ====")
+    print(data_generator)
+    print("")
+
+    existing_log_jsons = os.listdir(json_log_path)
+    if len(existing_log_jsons) > 0:
+        # find the last json file
+        existing_log_jsons.sort()
+        last_json = existing_log_jsons[-1]
+        last_json_path = os.path.join(json_log_path, last_json)
+        with open(last_json_path, "r") as f:
+            last_json_dict = json.load(f)
+        num_attempts = last_json_dict["num_attempts"]
+        num_success = last_json_dict["num_success"]
+        num_failures = last_json_dict["num_failures"]
+        num_problematic = last_json_dict["num_problematic"]
+        # backward compatibility
+        ep_lengths = last_json_dict.get("ep_lengths", [])
+        all_episode_logs = last_json_dict["all_episode_logs"]
+    else:
+        # data generation statistics
+        num_attempts = 0
+        num_success = 0
+        num_failures = 0
+        num_problematic = 0
+        ep_lengths = [] # episode lengths for successfully generated data
+        all_episode_logs = {
+            "episode_number": [],
+            "err_status": [],
+            "time_taken": [],
+            "task_success": [],
+            "phases_completed": [],
+            "phase_logs": [],
+        }
+
+    # selected_src_demo_inds_all = [] # selected source demo index in @all_demos for each trial
+    # selected_src_demo_inds_succ = [] # selected source demo index in @all_demos for each successful trial
+
+    # we will keep generating data until @num_trials successes (if @guarantee_success) else @num_trials attempts
+    num_trials = mg_config.experiment.generation.num_trials - num_attempts
+    guarantee_success = mg_config.experiment.generation.guarantee
     
     base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures = 0, 0, 0, 0, 0, 0
     obj_visible_at_start_of_manip = 0
-    all_episode_logs = {
-        "episode_number": [],
-        "err_status": [],
-        "time_taken": [],
-        "task_success": [],
-        "phases_completed": [],
-        "phase_logs": [],
-    }
 
     while True:
         print(f"======================= ATTEMPT {num_attempts} ========================")
@@ -484,29 +505,30 @@ def generate_dataset(
 
         # generated_traj will be None if a) the 0th phase of the trajectory failed due to MP or b) no_partial_tasks is True meaning that any MP failure in any phase
         # is considered a failure and is not saved in either the success or failure hdf5 file.
-        if generated_traj is None:
+        invalid_traj = generated_traj is None or len(generated_traj["states"]) == 0
+        if invalid_traj:
             success = False
             num_failures += 1
-            print("")
-            print("*" * 50)
-            print("trial {} success: {}".format(num_attempts, success))
-            print("have {} successes out of {} trials so far".format(num_success, num_attempts))
-            print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-            print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
-            print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
-            print("*" * 50)
-            continue
+        else:
+            success = env.is_success()["task"]
+            if success:
+                num_success += 1
+            else:
+                num_failures += 1
+
+        print("")
+        print("*" * 50)
+        print("trial {} success: {}".format(num_attempts, success))
+        print("have {} successes out of {} trials so far".format(num_success, num_attempts))
+        print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
+        print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
+        print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
+        print("*" * 50)
 
         # remember selection of source demos for each subtask
-        selected_src_demo_inds_all.append(generated_traj["src_demo_inds"])
-
-        # check if generated trajectory was successful
-        # success = bool(generated_traj["success"])
-        success = env.is_success()["task"]
+        # selected_src_demo_inds_all.append(generated_traj["src_demo_inds"])
 
         if success:
-            num_success += 1
-
             # store successful demonstration
             ep_lengths.append(generated_traj["actions"].shape[0])
             MG_FileUtils.write_demo_to_hdf5(
@@ -527,14 +549,12 @@ def generate_dataset(
                 left_mp_ranges=generated_traj["left_mp_ranges"],
                 right_mp_ranges=generated_traj["right_mp_ranges"],
             )
-            selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
+            # selected_src_demo_inds_succ.append(generated_traj["src_demo_inds"])
         else:
-            num_failures += 1
-
+            keep_failed = mg_config.experiment.generation.keep_failed
+            less_than_max_failures = (mg_config.experiment.max_num_failures is None) or (num_failures <= mg_config.experiment.max_num_failures)
             # check if this failure should be kept
-            if mg_config.experiment.generation.keep_failed and \
-                (mg_config.experiment.max_num_failures is None) or (num_failures <= mg_config.experiment.max_num_failures):
-                
+            if keep_failed and less_than_max_failures and not invalid_traj:
                 # save failed trajectory in separate folder
                 MG_FileUtils.write_demo_to_hdf5(
                     folder=tmp_dataset_failed_folder_path,
@@ -555,18 +575,8 @@ def generate_dataset(
                     right_mp_ranges=generated_traj["right_mp_ranges"],
                 )
 
-        print("")
-        print("*" * 50)
-        print("trial {} success: {}".format(num_attempts, success))
-        print("have {} successes out of {} trials so far".format(num_success, num_attempts))
-        print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
-        print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
-        print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
-        print("*" * 50)
-
         # regularly log progress to disk every so often
         if (num_attempts % mg_config.experiment.log_every_n_attempts) == 0:
-
             # get summary stats
             summary_stats = get_important_stats(
                 new_dataset_folder_path=new_dataset_folder_path,
@@ -574,6 +584,7 @@ def generate_dataset(
                 num_failures=num_failures,
                 num_attempts=num_attempts,
                 num_problematic=num_problematic,
+                ep_lengths=ep_lengths,
                 start_time=script_start_time,
                 ep_length_stats=None,
                 all_episode_logs=all_episode_logs,
@@ -635,6 +646,7 @@ def generate_dataset(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
+        ep_lengths=ep_lengths,
         start_time=script_start_time,
         ep_length_stats=ep_length_stats,
     )
@@ -678,6 +690,7 @@ def generate_dataset(
         num_failures=num_failures,
         num_attempts=num_attempts,
         num_problematic=num_problematic,
+        ep_lengths=ep_lengths,
         start_time=script_start_time,
         ep_length_stats=ep_length_stats,
         all_episode_logs=all_episode_logs,
