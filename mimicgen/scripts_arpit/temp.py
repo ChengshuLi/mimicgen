@@ -5,7 +5,7 @@ import numpy as np
 
 # ================ Inspect hdf5 files =================
 # # 1. teleoperation collected data
-# f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_wash_dishes.hdf5", "a")
+# f1 = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_pick_cup.hdf5", "a")
 
 # # 2. after prepare_src_data.py
 # f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_pick_cup.hdf5", "r")
@@ -23,13 +23,13 @@ import numpy as np
 
 
 # # ============ Modify hdf5 file ==============
-# f = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_wash_dishes.hdf5", "a")
+# f = h5py.File("/home/arpit/test_projects/OmniGibson/teleop_collected_data/r1_pick_cup.hdf5", "a")
 # group = f.require_group("mask")  # Create or get the group
 
 # # Define variable-length UTF-8 string data type
 # str_dt = h5py.string_dtype(encoding="utf-8")
 
-# data_list = ["demo_4"]
+# data_list = ["demo_14"]
 # # Make sure data is a numpy array with correct dtype
 # data_array = np.array(data_list, dtype=str_dt)
 
@@ -40,24 +40,24 @@ import numpy as np
 
 # # ============ Obtain stats from data gen ==============
 
-# file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_no_joint_limit/demo_src_r1_dishes_away_task_D0/logs/attempt_000053_succ_13_rate_24.53.json"
-file_path = "/home/arpit/test_projects/mimicgen/combined_important_stats.json"
-with open(file_path, 'r') as f:
-    data = json.load(f)
-breakpoint()
+# # file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_no_joint_limit/demo_src_r1_dishes_away_task_D0/logs/attempt_000053_succ_13_rate_24.53.json"
+# file_path = "/home/arpit/test_projects/mimicgen/combined_important_stats.json"
+# with open(file_path, 'r') as f:
+#     data = json.load(f)
+# breakpoint()
 
-phases_completed = np.array(data["all_episode_logs"]["phases_completed"])
-err_status = np.array(data["all_episode_logs"]["err_status"])
-phase_logs = data["all_episode_logs"]["phase_logs"]
-task_successes = np.array(data["all_episode_logs"]["task_success"])
+# phases_completed = np.array(data["all_episode_logs"]["phases_completed"])
+# err_status = np.array(data["all_episode_logs"]["err_status"])
+# phase_logs = data["all_episode_logs"]["phase_logs"]
+# task_successes = np.array(data["all_episode_logs"]["task_success"])
 
-# Find episodes that have no MP failure but failed at the task
-counter = 0
-for i, task_success in enumerate(task_successes):
-    if not task_success and err_status[i] == "None":
-        print("idx: ", i, "task_success: ", task_success, "err_status: ", err_status[i])
-        counter += 1
-print("counter: ", counter)
+# # Find episodes that have no MP failure but failed at the task
+# counter = 0
+# for i, task_success in enumerate(task_successes):
+#     if not task_success and err_status[i] == "None":
+#         print("idx: ", i, "task_success: ", task_success, "err_status: ", err_status[i])
+#         counter += 1
+# print("counter: ", counter)
 
 # unique_elements, counts = np.unique(phases_completed, return_counts=True)
 # frequency = dict(zip(unique_elements, counts))

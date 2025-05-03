@@ -3,7 +3,7 @@ import glob
 import os
 
 def combine_logs(base_dir, output_file):
-    pattern = os.path.join(base_dir, "r1_dishes_away_worker_*/demo_src_r1_dishes_away_task_D0/important_stats.json")
+    pattern = os.path.join(base_dir, "r1_tidy_table_worker_*/demo_src_r1_tidy_table_task_D0/important_stats.json")
     json_files = sorted(glob.glob(pattern))
 
     combined_logs = None
@@ -32,6 +32,6 @@ def combine_logs(base_dir, output_file):
 
 # Run it
 combine_logs(
-    base_dir="/home/arpit/test_projects/mimicgen/datasets/eric/dishes_away_wo_joint_limit",
+    base_dir="/home/arpit/test_projects/mimicgen/datasets/eric/tidy_table_wo_joint_limit",
     output_file="combined_important_stats.json"
 )
