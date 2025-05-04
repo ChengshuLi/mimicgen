@@ -408,7 +408,7 @@ def generate_dataset(
     # selected_src_demo_inds_succ = [] # selected source demo index in @all_demos for each successful trial
 
     # we will keep generating data until @num_trials successes (if @guarantee_success) else @num_trials attempts
-    num_trials = mg_config.experiment.generation.num_trials - num_attempts
+    num_trials = mg_config.experiment.generation.num_trials
     guarantee_success = mg_config.experiment.generation.guarantee
     
     base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures = 0, 0, 0, 0, 0, 0
@@ -628,7 +628,6 @@ def generate_dataset(
     # get episode length statistics
     ep_length_stats = None
     if len(ep_lengths) > 0:
-        ep_lengths = np.array(ep_lengths)
         ep_length_mean = float(np.mean(ep_lengths))
         ep_length_std = float(np.std(ep_lengths))
         ep_length_max = int(np.max(ep_lengths))
