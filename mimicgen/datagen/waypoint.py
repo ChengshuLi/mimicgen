@@ -646,6 +646,7 @@ class WaypointTrajectory(object):
                 states = []
                 actions = []
                 observations = []
+                observations_info = []
                 datagen_infos = []
                 success = {"task": False}
                 init_global_env_step = env.global_env_step
@@ -687,6 +688,7 @@ class WaypointTrajectory(object):
                     states.append(state)
                     actions.append(mp_action)
                     observations.append(obs)
+                    observations_info.append(json.dumps(obs_info))
                     datagen_infos.append(datagen_info)
 
                     # Check reference object visibility
@@ -748,6 +750,7 @@ class WaypointTrajectory(object):
                     left_mp_ranges=left_mp_ranges,
                     right_mp_ranges=right_mp_ranges,
                     retry_nav=False,
+                    observations_info=observations_info
                 )
                 # execution_phase_ind keeps track of each phase that was tried to be executed (even if MP failed for that phase). 
                 # In this case MP succeeded and phase was actually executed
@@ -763,6 +766,7 @@ class WaypointTrajectory(object):
             states = []
             actions = []
             observations = []
+            observations_info = []
             datagen_infos = []
             success = {"task": False}
             # success = {k: False for k in env.is_success()} # success metrics
@@ -955,6 +959,7 @@ class WaypointTrajectory(object):
                                 actions=np.array(actions),
                                 success=bool(success["task"]),
                                 retry_nav=True,
+                                observations_info=observations_info
                             )
                             return results
                         
@@ -1115,6 +1120,7 @@ class WaypointTrajectory(object):
                         states.append(state)
                         actions.append(mp_action)
                         observations.append(obs)
+                        observations_info.append(json.dumps(obs_info))
                         datagen_infos.append(datagen_info)
                         cur_success_metrics = env.is_success()
                         for k in success:
@@ -1243,6 +1249,7 @@ class WaypointTrajectory(object):
                 states.append(state)
                 actions.append(replay_action)
                 observations.append(obs)
+                observations_info.append(json.dumps(obs_info))
                 datagen_infos.append(datagen_info)
                 cur_success_metrics = env.is_success()
                 for k in success:
@@ -1412,6 +1419,7 @@ class WaypointTrajectory(object):
                         states.append(state)
                         actions.append(mp_action)
                         observations.append(obs)
+                        observations_info.append(json.dumps(obs_info))
                         datagen_infos.append(datagen_info)
                         cur_success_metrics = env.is_success()
                         for k in success:
@@ -1485,6 +1493,7 @@ class WaypointTrajectory(object):
                             states.append(state)
                             actions.append(mp_action)
                             observations.append(obs)
+                            observations_info.append(json.dumps(obs_info))
                             datagen_infos.append(datagen_info)
                             cur_success_metrics = env.is_success()
                             for k in success:
@@ -1505,6 +1514,7 @@ class WaypointTrajectory(object):
                 left_mp_ranges=left_mp_ranges,
                 right_mp_ranges=right_mp_ranges,
                 retry_nav=False,
+                observations_info=observations_info
             )
             env.execution_phase_ind += 1
             env.phases_completed_wo_mp_err += 1

@@ -462,6 +462,7 @@ class DataGenerator(object):
         # save generated data in these variables
         generated_states = []
         generated_obs = []
+        generated_obs_info = []
         generated_datagen_infos = []
         generated_actions = []
         generated_demo_mp_end_steps = []
@@ -845,6 +846,7 @@ class DataGenerator(object):
                                     initial_state=new_initial_state,
                                     states=generated_states,
                                     observations=generated_obs,
+                                    observations_info=generated_obs_info,
                                     datagen_infos=generated_datagen_infos,
                                     actions=generated_actions,
                                     success=generated_success,
@@ -867,6 +869,7 @@ class DataGenerator(object):
                         if len(exec_results["states"]) > 0:
                             generated_states += exec_results["states"]
                             generated_obs += exec_results["observations"]
+                            generated_obs_info += exec_results["observations_info"]
                             generated_datagen_infos += exec_results["datagen_infos"]
                             generated_actions.append(exec_results["actions"])
                             generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
@@ -945,6 +948,7 @@ class DataGenerator(object):
                                 initial_state=new_initial_state,
                                 states=generated_states,
                                 observations=generated_obs,
+                                observations_info=generated_obs_info,
                                 datagen_infos=generated_datagen_infos,
                                 actions=generated_actions,
                                 success=generated_success,
@@ -967,6 +971,7 @@ class DataGenerator(object):
                     if len(exec_results["states"]) > 0:
                         generated_states += exec_results["states"]
                         generated_obs += exec_results["observations"]
+                        generated_obs_info += exec_results["observations_info"]
                         generated_datagen_infos += exec_results["datagen_infos"]
                         generated_actions.append(exec_results["actions"])
                         generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
@@ -996,6 +1001,7 @@ class DataGenerator(object):
             initial_state=new_initial_state,
             states=generated_states,
             observations=generated_obs,
+            observations_info=generated_obs_info,
             datagen_infos=generated_datagen_infos,
             actions=generated_actions,
             success=generated_success,

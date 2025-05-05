@@ -379,6 +379,7 @@ def write_demo_to_hdf5(
     initial_state,
     states,
     observations,
+    observations_info,
     datagen_info,
     actions,
     src_demo_inds=None,
@@ -434,6 +435,10 @@ def write_demo_to_hdf5(
     obs = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
     for k in obs:
         ep_data_grp.create_dataset("obs/{}".format(k), data=np.stack(obs[k]), compression="gzip")
+
+    # write observations info
+    dt = h5py.string_dtype(encoding='utf-8')
+    ep_data_grp.create_dataset("obs_info", data=np.array(observations_info, dtype=dt))
 
     # write datagen info
     datagen_info = TensorUtils.list_of_flat_dict_to_dict_of_list([x.to_dict() for x in datagen_info])
