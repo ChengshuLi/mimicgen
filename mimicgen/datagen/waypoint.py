@@ -713,8 +713,11 @@ class WaypointTrajectory(object):
                 phase_logs[env.execution_phase_ind]["base_sampling_time"][base_mp_trial] = env.primitive.base_sampling_time
                 phase_logs[env.execution_phase_ind]["base_mp_planning_time"][base_mp_trial] = env.primitive.base_mp_planning_time
                 phase_logs[env.execution_phase_ind]["base_mp_execution_time"][base_mp_trial] = round(nav_execution_finish_time - nav_execution_start_time, 2)
-                print("Percentage of frames with object visible: ", env.num_frames_with_obj_visible / len(actions))
-                phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"] = env.num_frames_with_obj_visible / len(actions)
+                if len(actions) > 0:
+                    phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"] = env.num_frames_with_obj_visible / len(actions)
+                else:
+                    phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"] = 0
+                print("Percentage of frames with object visible: ", phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"])
 
                 if not nav_mp_success:
                     # This will happen if
