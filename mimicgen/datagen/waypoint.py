@@ -688,6 +688,22 @@ class WaypointTrajectory(object):
                     actions.append(mp_action)
                     observations.append(obs)
                     datagen_infos.append(datagen_info)
+
+                    # Check reference object visibility
+                    try:            
+                        seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
+                        seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
+                        obj_key = next((key for key, value in seg_instance_info.items() if value == "teacup_601"), None)
+                        if obj_key is None:
+                            count = 0
+                        else:
+                            count = (seg_instance == obj_key).sum().item()
+                        if count > 0:
+                            env.num_frames_with_obj_visible += 1
+                        # plt.imshow(seg_instance.cpu().numpy())
+                        # plt.show()
+                    except Exception as e:
+                        breakpoint()
                     # cur_success_metrics = env.is_success()
                     # for k in success:
                     #     success[k] = success[k] or cur_success_metrics[k]
@@ -697,6 +713,8 @@ class WaypointTrajectory(object):
                 phase_logs[env.execution_phase_ind]["base_sampling_time"][base_mp_trial] = env.primitive.base_sampling_time
                 phase_logs[env.execution_phase_ind]["base_mp_planning_time"][base_mp_trial] = env.primitive.base_mp_planning_time
                 phase_logs[env.execution_phase_ind]["base_mp_execution_time"][base_mp_trial] = round(nav_execution_finish_time - nav_execution_start_time, 2)
+                print("Percentage of frames with object visible: ", env.num_frames_with_obj_visible / len(actions))
+                phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"] = env.num_frames_with_obj_visible / len(actions)
 
                 if not nav_mp_success:
                     # This will happen if
@@ -708,6 +726,7 @@ class WaypointTrajectory(object):
                     if env.primitive.mp_err in ["BaseExecutionBaseTargetNotReached", "BaseExecutionArmTorsoTargetNotReached"]:
                         og.sim.load_state(init_state)
                         for _ in range(5): og.sim.step()
+                        env.num_frames_with_obj_visible = 0
 
                     continue
                 
@@ -880,6 +899,13 @@ class WaypointTrajectory(object):
                 #     obj_pose = ref_obj.get_position_orientation()
                 #     eyes_target_pos = obj_pose[0]
                 #     eyes_target_quat = obj_pose[1]
+
+                if enable_marker_vis:
+                    env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                    env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                    env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
+                    env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+
                 
                 # For manipulation, doing multiple tries does not help much (observed empirically). So, we set num_tries to 1
                 num_tries = 3
@@ -1000,12 +1026,6 @@ class WaypointTrajectory(object):
                 # These lines are for debugging purposes.
                 # successes, traj_paths = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=False, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
                 # full_result = env.cmg.compute_trajectories(target_pos=target_pos, target_quat=target_quat, is_local=False, max_attempts=50, timeout=60.0, ik_fail_return=5, enable_finetune_trajopt=True, finetune_attempts=1, return_full_result=True, success_ratio=1.0, attached_obj=attached_obj, attached_obj_scale=attached_obj_scale, emb_sel=emb_sel)
-                if enable_marker_vis:
-                    env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-                    env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-                    env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
-                    env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
-
 
                 # Convert planned joint trajectory to actions
                 # Need to call q_to_action after every env.step if the base is moving; we cannot pre-compute all actions

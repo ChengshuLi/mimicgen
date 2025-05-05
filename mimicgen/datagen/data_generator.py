@@ -435,7 +435,7 @@ class DataGenerator(object):
         
         sensor_info = env.sensor_setup()
         for _ in range(5): og.sim.render()
-
+        
         # parse MP_end_step from the configuration file
         end_step_of_MP_local = self.parse_MP_end_step_local()
 
@@ -479,9 +479,9 @@ class DataGenerator(object):
             if not env.valid_env:
                 break 
             
-            # # remove later
-            # if current_phase_ind > 0:
-            #     break
+            # remove later
+            if current_phase_ind > 0:
+                break
                         
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]            
             cur_phase_task_spec = self.task_spec[current_phase_ind]
@@ -696,121 +696,111 @@ class DataGenerator(object):
                     MP_end_steps = MP_end_steps[::-1]
                     # TODO: need to change the attached_obj_dict as well
                 
-                
                 if not env.manipulation_only:
-                    # ========== Check reachibility and visibility of the reference object ==============
-                    check_only_last_mp_waypoint = True
-                    reachable, visible = False, False
+                    if object_ref["arm_left"] is not None and object_ref["arm_left"] == "robot_r1":
+                        reachable_and_visible = True
+                    else:         
+                        # ========== Check reachibility and visibility of the reference object ==============
+                        check_only_last_mp_waypoint = True
+                        reachable, visible = False, False
 
-                    seq = traj_to_execute.waypoint_sequences[0]
-                    cur_subtask_end_step_MP = MP_end_steps
-                    
-                    # FIXME: If both are not None, currently setting right arm as the reference object. Fix this to account for both ref objects
-                    if object_ref["arm_right"] is None:
-                        ref_object = object_ref["arm_left"]
-                    elif object_ref["arm_left"] is None:
-                        ref_object = object_ref["arm_right"]
-                    else:
-                        ref_object = object_ref["arm_right"]
-                    
-                    ref_obj = env.env.scene.object_registry("name", ref_object)
-                    env.primitive._tracking_object = ref_obj
-                    print("Will track object for this sub-step: ", ref_obj.name)
+                        seq = traj_to_execute.waypoint_sequences[0]
+                        cur_subtask_end_step_MP = MP_end_steps
+                        
+                        # FIXME: If both are not None, currently setting right arm as the reference object. Fix this to account for both ref objects
+                        if object_ref["arm_right"] is None:
+                            ref_object = object_ref["arm_left"]
+                        elif object_ref["arm_left"] is None:
+                            ref_object = object_ref["arm_right"]
+                        else:
+                            ref_object = object_ref["arm_right"]
+                        
+                        ref_obj = env.env.scene.object_registry("name", ref_object)
+                        env.primitive._tracking_object = ref_obj
+                        print("Will track object for this sub-step: ", ref_obj.name)
 
-                    # # Option 1: Inform primitive stack about attached object for this phase
-                    # if attached_obj_dict is None:
-                    #     env.primitive.attached_obj_info = {"attached_obj": None, "attached_obj_scale": None}
-                    # else:
-                    #     attached_obj_new = {}
-                    #     attached_obj_scale = {}
-                    #     for arm, obj_name in attached_obj_dict.items():
-                    #         if obj_name is not None:
-                    #             attached_obj_new[env.robot.eef_link_names[arm]] = env.env.scene.object_registry("name", obj_name).root_link
-                    #             attached_obj_scale[env.robot.eef_link_names[arm]] = 0.9
-                    #     env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+                        # Inform primitive stack about attached object for this phase
+                        robot = env.robot
+                        attached_obj_new = {}
+                        attached_obj_scale = {}
+                        self.obtain_attached_object(env, robot, attached_obj_new, attached_obj_scale)
+                        if attached_obj_new == {}:
+                            attached_obj_new = None
+                            attached_obj_scale = None
+                        env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
+                        
+                        # In case reachability test is done for all eef poses (last MP waypoint + replay waypoints)
+                        if not check_only_last_mp_waypoint:
+                            left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+                            left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
+                            left_mp_last_waypoint = left_mp_waypoints[-1]
+                            left_waypoints = [left_mp_last_waypoint] + left_replay_waypoints
 
-                    # Option 2:
-                    robot = env.robot
-                    attached_obj_new = {}
-                    attached_obj_scale = {}
-                    self.obtain_attached_object(env, robot, attached_obj_new, attached_obj_scale)
-                    if attached_obj_new == {}:
-                        attached_obj_new = None
-                        attached_obj_scale = None
-                    env.primitive.attached_obj_info = {"attached_obj": attached_obj_new, "attached_obj_scale": attached_obj_scale}
-                    
-                    # In case reachability test is done for all eef poses (last MP waypoint + replay waypoints)
-                    if not check_only_last_mp_waypoint:
-                        left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
-                        left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
-                        left_mp_last_waypoint = left_mp_waypoints[-1]
-                        left_waypoints = [left_mp_last_waypoint] + left_replay_waypoints
+                            left_waypoint_pos = th.vstack([th.tensor(wp.pose[0:3, 3]) for wp in left_waypoints])
+                            left_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[0:3, 0:3])) for wp in left_waypoints])
 
-                        left_waypoint_pos = th.vstack([th.tensor(wp.pose[0:3, 3]) for wp in left_waypoints])
-                        left_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[0:3, 0:3])) for wp in left_waypoints])
+                            right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+                            right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
+                            right_mp_last_waypoint = right_mp_waypoints[-1]
+                            right_waypoints = [right_mp_last_waypoint] + right_replay_waypoints
 
-                        right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
-                        right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
-                        right_mp_last_waypoint = right_mp_waypoints[-1]
-                        right_waypoints = [right_mp_last_waypoint] + right_replay_waypoints
+                            right_waypoint_pos = th.vstack([th.tensor(wp.pose[4:7, 3]) for wp in right_waypoints])
+                            right_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[4:7, 0:3])) for wp in right_waypoints])
 
-                        right_waypoint_pos = th.vstack([th.tensor(wp.pose[4:7, 3]) for wp in right_waypoints])
-                        right_waypoint_ori = th.vstack([T.mat2quat(th.tensor(wp.pose[4:7, 0:3])) for wp in right_waypoints])
+                            left_waypoint_pos, right_waypoint_pos = self._pad_tensors(left_waypoint_pos, right_waypoint_pos)
+                            left_waypoint_ori, right_waypoint_ori = self._pad_tensors(left_waypoint_ori, right_waypoint_ori)
 
-                        left_waypoint_pos, right_waypoint_pos = self._pad_tensors(left_waypoint_pos, right_waypoint_pos)
-                        left_waypoint_ori, right_waypoint_ori = self._pad_tensors(left_waypoint_ori, right_waypoint_ori)
+                            left_waypoint_pos = self._subsample_tensor(left_waypoint_pos)
+                            left_waypoint_ori = self._subsample_tensor(left_waypoint_ori)
+                            right_waypoint_pos = self._subsample_tensor(right_waypoint_pos)
+                            right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
 
-                        left_waypoint_pos = self._subsample_tensor(left_waypoint_pos)
-                        left_waypoint_ori = self._subsample_tensor(left_waypoint_ori)
-                        right_waypoint_pos = self._subsample_tensor(right_waypoint_pos)
-                        right_waypoint_ori = self._subsample_tensor(right_waypoint_ori)
+                        # In case reachability test is done for only the last MP waypoint
+                        else:
+                            left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+                            left_waypoint = left_mp_waypoints[-1]
+                            left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
+                            right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+                            right_waypoint = right_mp_waypoints[-1]
+                            right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
 
-                    # In case reachability test is done for only the last MP waypoint
-                    else:
-                        left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
-                        left_waypoint = left_mp_waypoints[-1]
-                        left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
-                        right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
-                        right_waypoint = right_mp_waypoints[-1]
-                        right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
+                        eef_pose = {
+                            "left": (left_waypoint_pos, left_waypoint_ori),
+                            "right": (right_waypoint_pos, right_waypoint_ori)
+                        }
 
-                    eef_pose = {
-                        "left": (left_waypoint_pos, left_waypoint_ori),
-                        "right": (right_waypoint_pos, right_waypoint_ori)
-                    }
+                        if object_ref["arm_right"] is None:
+                            eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori)}
+                        elif object_ref["arm_left"] is None:
+                            eef_pose = {"right": (right_waypoint_pos, right_waypoint_ori)}
+                        else:
+                            eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori), "right": (right_waypoint_pos, right_waypoint_ori)}
 
-                    if object_ref["arm_right"] is None:
-                        eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori)}
-                    elif object_ref["arm_left"] is None:
-                        eef_pose = {"right": (right_waypoint_pos, right_waypoint_ori)}
-                    else:
-                        eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori), "right": (right_waypoint_pos, right_waypoint_ori)}
-
-                    # Check reachability. Three options:
-                    # 1. Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
-                    # pro: We care about a collision-free IK solution, which this computes. Alternative approach is not that efficient and accurate as you'll see
-                    # con: Does not verify for replay waypoints. Which means reaply waypoitns could be unreacahble. This typically won't happen as replay is pretty small deltas
-                    # 2. Use IK check without collision and use all (last MP waypoint + replay waypoints). Set the arm position from the returned IK solution for first target pose
-                    # (last waypoint of MP) and check for collision.
-                    # pro: Verifies for replay waypoints. 
-                    # con: If the chosen IK solution is not collision-free, but there exists one that wasn't chosen, we unnecessarily fail this check.
-                    # 3. Do IK check with collision for last MP wayoint and IK check without collision for replay waypoints. Might be overkill so only use this if needed.
-                    # retval = env.primitive._ik_solver_cartesian_to_joint_space(target_pose=eef_pose,
-                    #                                                         initial_joint_pos=env.robot.get_joint_positions(),
-                    #                                                         skip_obstacle_update=False,
-                    #                                                         ik_world_collision_check=True,
-                    #                                                         emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO)
-                    
-                    eyes_pose = env.robot.links["eyes"].get_position_orientation()
-                    reachable_and_visible = env.primitive._target_in_reach_of_robot_and_visible(target_pose=eef_pose,
-                                                                            initial_joint_pos=env.robot.get_joint_positions(),
-                                                                            skip_obstacle_update=False,
-                                                                            ik_world_collision_check=True,
-                                                                            emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO,
-                                                                            attach_obj=True,
-                                                                            eyes_pose=eyes_pose,)
-                    print("object to be manipulated is reachable and visible: ", reachable_and_visible)
-                    # ======================== End of reachibility and visibility check =========================
+                        # Check reachability. Three options:
+                        # 1. Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
+                        # pro: We care about a collision-free IK solution, which this computes. Alternative approach is not that efficient and accurate as you'll see
+                        # con: Does not verify for replay waypoints. Which means reaply waypoitns could be unreacahble. This typically won't happen as replay is pretty small deltas
+                        # 2. Use IK check without collision and use all (last MP waypoint + replay waypoints). Set the arm position from the returned IK solution for first target pose
+                        # (last waypoint of MP) and check for collision.
+                        # pro: Verifies for replay waypoints. 
+                        # con: If the chosen IK solution is not collision-free, but there exists one that wasn't chosen, we unnecessarily fail this check.
+                        # 3. Do IK check with collision for last MP wayoint and IK check without collision for replay waypoints. Might be overkill so only use this if needed.
+                        # retval = env.primitive._ik_solver_cartesian_to_joint_space(target_pose=eef_pose,
+                        #                                                         initial_joint_pos=env.robot.get_joint_positions(),
+                        #                                                         skip_obstacle_update=False,
+                        #                                                         ik_world_collision_check=True,
+                        #                                                         emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO)
+                        
+                        eyes_pose = env.robot.links["eyes"].get_position_orientation()
+                        reachable_and_visible = env.primitive._target_in_reach_of_robot_and_visible(target_pose=eef_pose,
+                                                                                initial_joint_pos=env.robot.get_joint_positions(),
+                                                                                skip_obstacle_update=False,
+                                                                                ik_world_collision_check=True,
+                                                                                emb_sel=CuRoboEmbodimentSelection.ARM_NO_TORSO,
+                                                                                attach_obj=True,
+                                                                                eyes_pose=eyes_pose,)
+                        print("object to be manipulated is reachable and visible: ", reachable_and_visible)
+                        # ======================== End of reachibility and visibility check =========================
                 # If we are in the debugging mode of "manipulation_only" for pick_cup task, don't check reachability and visibility
                 else:
                     reachable_and_visible = True
@@ -841,6 +831,7 @@ class DataGenerator(object):
                         )
                         # To let any remaining simulation steps finish.
                         for _ in range(50): og.sim.step()
+                        print("env.num_frames_with_obj_visible: ", env.num_frames_with_obj_visible)
                     
                         # This means that the the current phase failed 
                         if exec_results is None:
@@ -888,104 +879,104 @@ class DataGenerator(object):
                             generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
 
                         
-                    # 2. Now we can execute the manipulation segment
-                    print("=========== Manipulation phase ===========")
-                    # Execute the manipulation trajectory and collect data.
-                    exec_results = traj_to_execute.execute(
-                        env=env,
-                        env_interface=env_interface,
-                        render=render,
-                        video_writer=video_writer,
-                        video_skip=video_skip,
-                        camera_names=camera_names,
-                        bimanual=self.bimanual,
-                        cur_subtask_end_step_MP=MP_end_steps,
-                        # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
-                        attached_obj=attached_obj_dict,
-                        phase_type=phase_type,
-                        object_ref=object_ref,
-                        enable_marker_vis=enable_marker_vis,
-                        ds_ratio=ds_ratio,
-                        grasp_init_views_video_writer=grasp_init_views_video_writer,
-                        phase_logs=phase_logs,
-                        retract_type=retract_type
-                    )
-                    # To let any remaining simulation steps finish.
-                    for _ in range(50): og.sim.step()
-                    # breakpoint()
+                    # # 2. Now we can execute the manipulation segment
+                    # print("=========== Manipulation phase ===========")
+                    # # Execute the manipulation trajectory and collect data.
+                    # exec_results = traj_to_execute.execute(
+                    #     env=env,
+                    #     env_interface=env_interface,
+                    #     render=render,
+                    #     video_writer=video_writer,
+                    #     video_skip=video_skip,
+                    #     camera_names=camera_names,
+                    #     bimanual=self.bimanual,
+                    #     cur_subtask_end_step_MP=MP_end_steps,
+                    #     # attached_obj=attached_obj[current_phase_ind][subtask_ind_reordered],
+                    #     attached_obj=attached_obj_dict,
+                    #     phase_type=phase_type,
+                    #     object_ref=object_ref,
+                    #     enable_marker_vis=enable_marker_vis,
+                    #     ds_ratio=ds_ratio,
+                    #     grasp_init_views_video_writer=grasp_init_views_video_writer,
+                    #     phase_logs=phase_logs,
+                    #     retract_type=retract_type
+                    # )
+                    # # To let any remaining simulation steps finish.
+                    # for _ in range(50): og.sim.step()
+                    # # breakpoint()
                 
-                    # Early terminate if the expecetd attached obj (according to the template) is not what is actually in the gripper
-                    if current_phase_ind < self.num_phases - 1:
-                        next_phase_task_spec = self.task_spec[current_phase_ind+1]
-                        left_expected_attached_obj = next_phase_task_spec[0][0]["attached_obj"]
-                        right_expected_attached_obj = next_phase_task_spec[1][0]["attached_obj"]
-                        attached_object_names = self.obtain_attached_object(env, env.robot)
-                        attached_object_mismatch = False
-                        # If left eef actually has an object 
-                        if "left" in attached_object_names.keys():
-                            if attached_object_names["left"] != left_expected_attached_obj:
-                                attached_object_mismatch = True
-                        # If left eef actually does not have an object
-                        elif "left" not in attached_object_names.keys():
-                            if left_expected_attached_obj is not None:
-                                attached_object_mismatch = True
-                        # If right eef actually has an object 
-                        if "right" in attached_object_names.keys():
-                            if attached_object_names["right"] != right_expected_attached_obj:
-                                attached_object_mismatch = True
-                        # If right eef actually does not have an object
-                        elif "right" not in attached_object_names.keys():
-                            if right_expected_attached_obj is not None:
-                                attached_object_mismatch = True
+                    # # Early terminate if the expecetd attached obj (according to the template) is not what is actually in the gripper
+                    # if current_phase_ind < self.num_phases - 1:
+                    #     next_phase_task_spec = self.task_spec[current_phase_ind+1]
+                    #     left_expected_attached_obj = next_phase_task_spec[0][0]["attached_obj"]
+                    #     right_expected_attached_obj = next_phase_task_spec[1][0]["attached_obj"]
+                    #     attached_object_names = self.obtain_attached_object(env, env.robot)
+                    #     attached_object_mismatch = False
+                    #     # If left eef actually has an object 
+                    #     if "left" in attached_object_names.keys():
+                    #         if attached_object_names["left"] != left_expected_attached_obj:
+                    #             attached_object_mismatch = True
+                    #     # If left eef actually does not have an object
+                    #     elif "left" not in attached_object_names.keys():
+                    #         if left_expected_attached_obj is not None:
+                    #             attached_object_mismatch = True
+                    #     # If right eef actually has an object 
+                    #     if "right" in attached_object_names.keys():
+                    #         if attached_object_names["right"] != right_expected_attached_obj:
+                    #             attached_object_mismatch = True
+                    #     # If right eef actually does not have an object
+                    #     elif "right" not in attached_object_names.keys():
+                    #         if right_expected_attached_obj is not None:
+                    #             attached_object_mismatch = True
                         
-                        if attached_object_mismatch:
-                            print("Attached object mismatch, terminating early")
-                            exec_results = None
+                    #     if attached_object_mismatch:
+                    #         print("Attached object mismatch, terminating early")
+                    #         exec_results = None
                     
-                    # This means that the the current phase failed
-                    if exec_results is None:
-                        # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
-                        if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:
-                            if len(generated_actions) > 0:
-                                generated_actions = np.concatenate(generated_actions, axis=0)
-                                generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
-                            results = dict(
-                                initial_state=new_initial_state,
-                                states=generated_states,
-                                observations=generated_obs,
-                                datagen_infos=generated_datagen_infos,
-                                actions=generated_actions,
-                                success=generated_success,
-                                src_demo_inds=generated_src_demo_inds,
-                                src_demo_labels=generated_src_demo_labels,
-                                mp_end_steps=generated_demo_mp_end_steps,
-                                subtask_lengths=generated_demo_subtask_lengths,
-                                sensor_info=sensor_info,
-                                partial=True,
-                                phases_completed=env.phases_completed_wo_mp_err,
-                                left_mp_ranges=generated_demo_left_mp_ranges,
-                                right_mp_ranges=generated_demo_right_mp_ranges,
-                                phase_logs=phase_logs,
-                            )
-                            return results
-                        else:
-                            return None
+                    # # This means that the the current phase failed
+                    # if exec_results is None:
+                    #     # If we want to save partially completed tasks (that had atleast 1 phase executed successfully otherwise it's just an empty trajectory)
+                    #     if not no_partial_tasks and env.phases_completed_wo_mp_err > 0:
+                    #         if len(generated_actions) > 0:
+                    #             generated_actions = np.concatenate(generated_actions, axis=0)
+                    #             generated_src_demo_labels = np.concatenate(generated_src_demo_labels, axis=0)
+                    #         results = dict(
+                    #             initial_state=new_initial_state,
+                    #             states=generated_states,
+                    #             observations=generated_obs,
+                    #             datagen_infos=generated_datagen_infos,
+                    #             actions=generated_actions,
+                    #             success=generated_success,
+                    #             src_demo_inds=generated_src_demo_inds,
+                    #             src_demo_labels=generated_src_demo_labels,
+                    #             mp_end_steps=generated_demo_mp_end_steps,
+                    #             subtask_lengths=generated_demo_subtask_lengths,
+                    #             sensor_info=sensor_info,
+                    #             partial=True,
+                    #             phases_completed=env.phases_completed_wo_mp_err,
+                    #             left_mp_ranges=generated_demo_left_mp_ranges,
+                    #             right_mp_ranges=generated_demo_right_mp_ranges,
+                    #             phase_logs=phase_logs,
+                    #         )
+                    #         return results
+                    #     else:
+                    #         return None
 
-                    # check that trajectory is non-empty
-                    if len(exec_results["states"]) > 0:
-                        generated_states += exec_results["states"]
-                        generated_obs += exec_results["observations"]
-                        generated_datagen_infos += exec_results["datagen_infos"]
-                        generated_actions.append(exec_results["actions"])
-                        generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
-                        if exec_results["left_mp_ranges"] is not None:
-                            generated_demo_left_mp_ranges.append(exec_results["left_mp_ranges"])
-                        if exec_results["right_mp_ranges"] is not None:
-                            generated_demo_right_mp_ranges.append(exec_results["right_mp_ranges"])
-                        generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
-                        generated_success = generated_success or exec_results["success"]
-                        generated_src_demo_inds.append(selected_src_demo_ind)
-                        generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
+                    # # check that trajectory is non-empty
+                    # if len(exec_results["states"]) > 0:
+                    #     generated_states += exec_results["states"]
+                    #     generated_obs += exec_results["observations"]
+                    #     generated_datagen_infos += exec_results["datagen_infos"]
+                    #     generated_actions.append(exec_results["actions"])
+                    #     generated_demo_mp_end_steps.append(exec_results["mp_end_steps"])
+                    #     if exec_results["left_mp_ranges"] is not None:
+                    #         generated_demo_left_mp_ranges.append(exec_results["left_mp_ranges"])
+                    #     if exec_results["right_mp_ranges"] is not None:
+                    #         generated_demo_right_mp_ranges.append(exec_results["right_mp_ranges"])
+                    #     generated_demo_subtask_lengths.append(exec_results["subtask_lengths"])
+                    #     generated_success = generated_success or exec_results["success"]
+                    #     generated_src_demo_inds.append(selected_src_demo_ind)
+                    #     generated_src_demo_labels.append(selected_src_demo_ind * np.ones((exec_results["actions"].shape[0], 1), dtype=int))
 
                     # In most cases we don't need to retry nav. This is only trigered if manipulation MP (arm_no_torso mode) fails due to IK or TrajOpt failure 
                     if not exec_results["retry_nav"]:
