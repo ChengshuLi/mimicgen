@@ -693,7 +693,7 @@ class WaypointTrajectory(object):
                     try:            
                         seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
                         seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
-                        obj_key = next((key for key, value in seg_instance_info.items() if value == "teacup_601"), None)
+                        obj_key = next((key for key, value in seg_instance_info.items() if value == ref_obj.name), None)
                         if obj_key is None:
                             count = 0
                         else:
