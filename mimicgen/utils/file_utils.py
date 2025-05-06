@@ -18,6 +18,7 @@ import numpy as np
 import copy
 import pdb
 
+import torch as th
 from glob import glob
 from tqdm import tqdm
 
@@ -429,11 +430,26 @@ def write_demo_to_hdf5(
         for k in states:
             ep_data_grp.create_dataset("states/{}".format(k), data=np.stack(states[k]))
     else:
+        lens_states = [len(states[i]) for i in range(len(states))]
+        # Pad the states to the same size in case they are not
+        states_std = np.std(lens_states)
+        if states_std > 0:
+            max_state_size = max(lens_states)
+            for i, state in enumerate(states):
+                padded_state = th.zeros(max_state_size, dtype=th.float32)
+                padded_state[: len(state)] = state
+                states[i] = padded_state
+
         ep_data_grp.create_dataset("states", data=np.stack(states))
 
     # write observations
     obs = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
+    # check if we don't write seg_instance how much space do we save
+    ignore_keys = ["robot_r1::robot_r1:left_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:right_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:eyes:Camera:0::seg_instance"]
     for k in obs:
+        if k in ignore_keys:
+            # ignore seg_instance
+            continue
         ep_data_grp.create_dataset("obs/{}".format(k), data=np.stack(obs[k]), compression="gzip")
 
     # write observations info

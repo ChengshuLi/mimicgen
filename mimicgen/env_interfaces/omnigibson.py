@@ -954,6 +954,7 @@ class MG_R1CleanPan(OmniGibsonInterfaceBimanual):
             frying_pan_602=self.get_object_pose(obj=self.env.scene.object_registry("name", "frying_pan_602")),
             scrub_brush_601=self.get_object_pose(obj=self.env.scene.object_registry("name", "scrub_brush_601")),
             robot_r1=self.get_object_pose(obj=self.env.scene.object_registry("name", "robot_r1")),
+            torso_link4=self.get_object_pose(obj=self.env.robots[0].links["torso_link4"]),
         )
 
     def get_subtask_term_signals(self):

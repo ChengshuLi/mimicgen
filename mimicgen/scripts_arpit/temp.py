@@ -9,7 +9,7 @@ import numpy as np
 
 # # 2. after prepare_src_data.py
 # f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_pick_cup.hdf5", "r")
-# f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_clean_pan.hdf5", "r")
+f2 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/source_og/r1_clean_pan.hdf5", "r")
 
 # # 3. generated data from momagen in MimicGen format
 # f3 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_no_joint_limit/demo_src_r1_dishes_away_task_D0/tmp_failed/date_05_01_2025_time_00_34_11.hdf5", "r")
@@ -18,7 +18,7 @@ import numpy as np
 # # 4. generated data from momagen in Robomimic format
 # f4 = h5py.File("/home/arpit/test_projects/mimicgen/datasets/generated_data/test_tiago_single_arm_cup/robomimic_dataset_floor_filtering_fps_4096_color.hdf5", "r")
 
-# breakpoint()
+breakpoint()
 # =======================================================
 
 
@@ -40,20 +40,20 @@ import numpy as np
 
 # ============ Obtain stats from data gen ==============
 
-file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/tidy_table_no_soft_vis/demo_src_r1_tidy_table_task_D0/logs/attempt_000042_succ_0_rate_0.0.json"
-# file_path = "/home/arpit/test_projects/mimicgen/datasets/eric/r1_dishes_away_combined_important_stats.json"
-with open(file_path, 'r') as f:
-    data = json.load(f)
-breakpoint()
+# file_path = "/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/tidy_table_no_soft_vis/demo_src_r1_tidy_table_task_D0/logs/attempt_000042_succ_0_rate_0.0.json"
+# # file_path = "/home/arpit/test_projects/mimicgen/datasets/eric/r1_dishes_away_combined_important_stats.json"
+# with open(file_path, 'r') as f:
+#     data = json.load(f)
+# breakpoint()
 
-# # -- Obtain visible stats 
-vis_percentages = list()
-for i, ep_phase_logs in enumerate(data["all_episode_logs"]["phase_logs"]):
-    vis_percentage = ep_phase_logs["0"]["num_frames_with_obj_visible"]
-    print("vis_percentage: ", vis_percentage)
-    vis_percentages.append(vis_percentage)
-print("mean vis percentage: ", np.array(vis_percentages).mean())
-print("median vis percentage: ", np.median(np.array(vis_percentages)))
+# # # -- Obtain visible stats 
+# vis_percentages = list()
+# for i, ep_phase_logs in enumerate(data["all_episode_logs"]["phase_logs"]):
+#     vis_percentage = ep_phase_logs["0"]["num_frames_with_obj_visible"]
+#     print("vis_percentage: ", vis_percentage)
+#     vis_percentages.append(vis_percentage)
+# print("mean vis percentage: ", np.array(vis_percentages).mean())
+# print("median vis percentage: ", np.median(np.array(vis_percentages)))
 
 # phases_completed = np.array(data["all_episode_logs"]["phases_completed"])
 # err_status = np.array(data["all_episode_logs"]["err_status"])

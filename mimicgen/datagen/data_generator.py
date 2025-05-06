@@ -364,6 +364,20 @@ class DataGenerator(object):
                             break
         return attached_object_names
     
+    def visualize_traj(self, env, src_eef_poses, transformed_eef_poses):
+        while True:
+            for i in range(len(src_eef_poses)):
+                src_eef_pose = T.mat2pose(th.tensor(src_eef_poses[i]))
+                transformed_eef_pose = T.mat2pose(th.tensor(transformed_eef_poses[i]))
+                env.eef_goal_marker_left.set_position_orientation(*src_eef_pose)
+                env.eef_goal_marker_right.set_position_orientation(*transformed_eef_pose)
+                for _ in range(5): og.sim.step()
+            inp = input("Press r to replay or anything else to continue")
+            if inp == 'r':
+                continue
+            else:
+                break
+    
     def generate(
         self,
         env,
@@ -481,8 +495,8 @@ class DataGenerator(object):
                 break 
             
             # # remove later
-            # if current_phase_ind > 0:
-            #     break
+            # if current_phase_ind < 2:
+            #     continue
                         
             phase_type = self.task_spec[current_phase_ind][0][0]["phase_type"]            
             cur_phase_task_spec = self.task_spec[current_phase_ind]
@@ -583,8 +597,14 @@ class DataGenerator(object):
                         # src_subtask_target_poses = src_subtask_target_poses[:,4:,:]
                         src_subtask_gripper_actions = src_subtask_gripper_actions[:,1:]
 
+                    # breakpoint()
+                    # hack when ref object is robot
+                    if subtask_object_name in ["robot_r1", "torso_link4"]:
+                        frame_to_use_for_src_object_pose = end_step_of_MP_local[current_phase_ind][arm_i][subtask_ind]
+                    else:
+                        frame_to_use_for_src_object_pose = selected_src_subtask_inds[0]
                     # get reference object pose from source demo
-                    src_subtask_object_pose = src_ep_datagen_info.object_poses[subtask_object_name][selected_src_subtask_inds[0]] if (subtask_object_name is not None) else None # 4 x 4
+                    src_subtask_object_pose = src_ep_datagen_info.object_poses[subtask_object_name][frame_to_use_for_src_object_pose] if (subtask_object_name is not None) else None # 4 x 4
 
                     # src_eef_poses = np.array(src_subtask_eef_poses)
                     # if is_first_subtask or transform_first_robot_pose:
@@ -615,6 +635,10 @@ class DataGenerator(object):
                         # skip transformation if no reference object is provided
                         transformed_eef_poses = src_eef_poses
 
+                    # # visualize original and transformed eef poses
+                    # breakpoint()
+                    # self.visualize_traj(env, src_eef_poses, transformed_eef_poses)
+                    
                     # We will construct a WaypointTrajectory instance to keep track of robot control targets 
                     # that will be executed and then execute it.
                     # traj_to_execute = WaypointTrajectory()
@@ -700,7 +724,7 @@ class DataGenerator(object):
                     # TODO: need to change the attached_obj_dict as well
                 
                 if not env.manipulation_only:
-                    if object_ref["arm_left"] is not None and object_ref["arm_left"] == "robot_r1":
+                    if object_ref["arm_left"] is not None and object_ref["arm_left"] in ["robot_r1", "torso_joint4"]:
                         reachable_and_visible = True
                     else:         
                         # ========== Check reachibility and visibility of the reference object ==============

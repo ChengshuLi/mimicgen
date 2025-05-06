@@ -538,7 +538,10 @@ class WaypointTrajectory(object):
         else:
             ref_object = object_ref["arm_right"]
         
-        ref_obj = env.env.scene.object_registry("name", ref_object)
+        if "torso" in ref_object:
+            ref_obj = env.env.robots[0].links["torso_link4"]
+        else:
+            ref_obj = env.env.scene.object_registry("name", ref_object)
         env.primitive._tracking_object = ref_obj
         print("Will track object for this sub-step: ", ref_obj.name)
         robot = env.env.robots[0]
