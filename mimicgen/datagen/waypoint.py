@@ -695,20 +695,18 @@ class WaypointTrajectory(object):
                     datagen_infos.append(datagen_info)
 
                     # Check reference object visibility
-                    try:            
-                        seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
-                        seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
-                        obj_key = next((key for key, value in seg_instance_info.items() if value == ref_obj.name), None)
-                        if obj_key is None:
-                            count = 0
-                        else:
-                            count = (seg_instance == obj_key).sum().item()
-                        if count > 0:
-                            env.num_frames_with_obj_visible += 1
-                        # plt.imshow(seg_instance.cpu().numpy())
-                        # plt.show()
-                    except Exception as e:
-                        breakpoint()
+                    seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
+                    seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
+                    obj_key = next((key for key, value in seg_instance_info.items() if value == ref_obj.name), None)
+                    if obj_key is None:
+                        count = 0
+                    else:
+                        count = (seg_instance == obj_key).sum().item()
+                    if count > 0:
+                        env.num_frames_with_obj_visible += 1
+                    # plt.imshow(seg_instance.cpu().numpy())
+                    # plt.show()
+
                     # cur_success_metrics = env.is_success()
                     # for k in success:
                     #     success[k] = success[k] or cur_success_metrics[k]
