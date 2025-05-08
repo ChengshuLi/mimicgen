@@ -47,6 +47,7 @@ def create_env(
     policy_rollout=False,
     manipulation_only=False,
     real_robot_mode=False,
+    baseline=None
 ):
     """
     Helper function to create the environment from dataset metadata and arguments.
@@ -105,6 +106,7 @@ def create_env(
         policy_rollout=policy_rollout,
         manipulation_only=manipulation_only,
         real_robot_mode=real_robot_mode,
+        baseline=baseline,
     )
 
     return env

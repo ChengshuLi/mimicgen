@@ -438,7 +438,7 @@ class WaypointTrajectory(object):
         # breakpoint()
         return left_reaplay_wp_ds, right_reaplay_wp_ds
     
-    def setup_phase_logs(self, phase_type):
+    def setup_phase_logs(self, phase_type, baseline=None):
         current_phase_logs = dict()
         current_phase_logs["phase_type"] = phase_type
         current_phase_logs["base_sampling_time"] = dict()
@@ -448,6 +448,8 @@ class WaypointTrajectory(object):
         current_phase_logs["arm_mp_planning_time"] = dict()
         current_phase_logs["arm_mp_execution_time"] = dict()
         current_phase_logs["arm_replay_execution_time"] = dict()
+        if baseline == "mimicgen":
+            current_phase_logs["arm_interp_execution_time"] = dict()
 
         current_phase_logs["full_retract_mp_planning_time"] = dict()
         current_phase_logs["full_retract_mp_execution_time"] = dict()
@@ -455,6 +457,8 @@ class WaypointTrajectory(object):
         current_phase_logs["torso_retract_mp_execution_time"] = dict()
         current_phase_logs["full_retract_mp_err"] = dict()
         current_phase_logs["torso_retract_mp_err"] = dict()
+
+        current_phase_logs["visibility_stats"] = dict()
 
         return current_phase_logs
     
@@ -487,6 +491,651 @@ class WaypointTrajectory(object):
         )
         return retval
     
+    def reset_visibility_counter(self, env):
+        """
+        Reset the visibility counter for each sensor.
+        """
+        for sensor_name, sensor in env.robot.sensors.items():
+            if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                shortened_sensor_name = sensor_name.split(":")[1]
+                env.num_frames_with_obj_visible[shortened_sensor_name] = 0
+    
+    def check_ref_obj_visibility(self, env, obs, obs_info, ref_obj):
+        for sensor_name, sensor in env.robot.sensors.items():
+            if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                shortened_sensor_name = sensor_name.split(":")[1]
+                seg_instance = obs[f"{env.robot_name}::{sensor_name}::seg_instance"]
+                seg_instance_info = obs_info[f"{env.robot_name}"][sensor_name]["seg_instance"]
+                obj_key = next((key for key, value in seg_instance_info.items() if value == ref_obj.name), None)
+                if obj_key is None:
+                    count = 0
+                    # if shortened_sensor_name == "eyes":
+                    #     print("not found")
+                else:
+                    count = (seg_instance == obj_key).sum().item()
+                    # if shortened_sensor_name == "eyes":
+                    #     print("found")
+                if count > 0:
+                    env.num_frames_with_obj_visible[shortened_sensor_name] += 1
+                              
+    def execute_baseline(
+        self, 
+        env,
+        env_interface, 
+        render=False, 
+        video_writer=None, 
+        video_skip=5, 
+        camera_names=None,
+        bimanual=False,
+        cur_subtask_end_step_MP=None,
+        attached_obj=None,
+        phase_type=None,
+        object_ref=None,
+        grasp_init_views_video_writer=None,
+        enable_marker_vis=False,
+        ds_ratio=1,
+        phase_logs=None,
+        retract_type=None,
+        src_curr_phase_actions=None,
+        baseline=None,
+    ):
+        if object_ref["arm_right"] is None:
+            ref_object = object_ref["arm_left"]
+        elif object_ref["arm_left"] is None:
+            ref_object = object_ref["arm_right"]
+        else:
+            ref_object = object_ref["arm_right"]
+        
+        if "torso" in ref_object:
+            ref_obj = env.env.robots[0].links["torso_link4"]
+        else:
+            ref_obj = env.env.scene.object_registry("name", ref_object)
+        print("ref_obj: ", ref_obj.name)
+        robot = env.env.robots[0]
+        
+        # TODO: implement early stopping on 1. collision 2. attached object misatch
+        if phase_type == "navigation":
+            phase_logs[env.execution_phase_ind] = self.setup_phase_logs(phase_type=phase_type)
+            init_state = og.sim.dump_state()
+            local_env_step = 0
+            states = []
+            actions = []
+            observations = []
+            observations_info = []
+            datagen_infos = []
+            success = {"task": False}
+            init_global_env_step = env.global_env_step
+            nav_execution_start_time = time.time()
+            # breakpoint()
+            init_arm_left_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
+            init_arm_right_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
+            for temp_idx, src_action in enumerate(src_curr_phase_actions):
+                action = env.primitive._empty_action()
+                action[robot.base_action_idx] = th.tensor(src_action[robot.base_action_idx], dtype=th.float32)
+                action[robot.arm_action_idx["left"]] = init_arm_left_pos
+                action[robot.arm_action_idx["right"]] = init_arm_right_pos
+                if attached_obj["left"] is not None:
+                    action[robot.gripper_action_idx["left"]] = -1
+                if attached_obj["right"] is not None:
+                    action[robot.gripper_action_idx["right"]] = -1
+                state = env.get_state()["states"]
+                obs, obs_info = env.get_obs_IL()
+                datagen_info = env_interface.get_datagen_info(action=action)
+                env.step(action, video_writer)
+                local_env_step += 1
+                env.global_env_step += 1
+                states.append(state)
+                actions.append(action)
+                observations.append(obs)
+                observations_info.append(json.dumps(obs_info))
+                datagen_infos.append(datagen_info)
+                # Check reference object visibility
+                self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+
+            nav_execution_finish_time = time.time()
+            phase_logs[env.execution_phase_ind]["base_mp_execution_time"][0] = round(nav_execution_finish_time - nav_execution_start_time, 2)
+            print("nav execution time: ", phase_logs[env.execution_phase_ind]["base_mp_execution_time"][0])
+
+            num_phase_steps = env.global_env_step - init_global_env_step
+            for sensor_name, sensor in env.robot.sensors.items():
+                if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                    shortened_sensor_name = sensor_name.split(":")[1]
+                    if num_phase_steps > 0:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                    else:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_{shortened_sensor_name}"]= 0
+                    print(f"Visibility stats for nav_repeat {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_{shortened_sensor_name}"])
+
+            MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
+            left_mp_ranges = [0, 0]
+            right_mp_ranges = [0, 0]
+            results = dict(
+                states=states,
+                observations=observations,
+                datagen_infos=datagen_infos,
+                actions=np.array(actions),
+                success=bool(success["task"]),
+                mp_end_steps=MP_end_step_local_list,
+                subtask_lengths=local_env_step,
+                left_mp_ranges=left_mp_ranges,
+                right_mp_ranges=right_mp_ranges,
+                retry_nav=False,
+                observations_info=observations_info
+            )
+            # execution_phase_ind keeps track of each phase that was tried to be executed (even if MP failed for that phase). 
+            # In this case MP succeeded and phase was actually executed
+            env.execution_phase_ind += 1
+            env.phases_completed_wo_mp_err += 1
+            return results
+
+        else:
+            phase_logs[env.execution_phase_ind] = self.setup_phase_logs(phase_type=phase_type, baseline=baseline)
+            local_env_step = 0
+            states = []
+            actions = []
+            observations = []
+            observations_info = []
+            datagen_infos = []
+            success = {"task": False}
+
+            assert len(self.waypoint_sequences) == 1
+            seq = self.waypoint_sequences[0]
+            for end_step in cur_subtask_end_step_MP:
+                assert 0 <= end_step <= len(seq)
+
+            # Segment the waypoints into motion planner waypoints and replay waypoints
+            left_mp_waypoints = seq[:cur_subtask_end_step_MP[0]]
+            left_replay_waypoints = seq[cur_subtask_end_step_MP[0]:]
+            right_mp_waypoints = seq[:cur_subtask_end_step_MP[1]]
+            right_replay_waypoints = seq[cur_subtask_end_step_MP[1]:]
+
+            # print("left_mp_waypoints", len(left_mp_waypoints))
+            # print("left_replay_waypoints", len(left_replay_waypoints))
+            # print("right_mp_waypoints", len(right_mp_waypoints))
+            # print("right_replay_waypoints", len(right_replay_waypoints))
+
+            # Get the last waypoint for padding later
+            last_waypoint = seq[-1]
+
+            # 1. make sure the gripper actions are the same
+            # 2. get the last waypoint's pose and orientation as the MP target
+            # Otherwise, use the current eef pose as the MP target
+            if len(left_mp_waypoints) > 0:
+                gripper_actions = np.array([waypoint.gripper_action for waypoint in left_mp_waypoints])
+                # This is not necessarily true since while teleopating as a non-optimal teleoperator, I inadvertently would toggle gripper on / off
+                # Specially when trying to grasp. So removed this assertion
+                # assert (gripper_actions[:, 0] == gripper_actions[0, 0]).all()
+                left_waypoint = left_mp_waypoints[-1]
+                left_gripper_action = left_waypoint.gripper_action
+                left_waypoint_pos, left_waypoint_ori = th.tensor(left_waypoint.pose[0:3, 3]), T.mat2quat(th.tensor(left_waypoint.pose[0:3, 0:3]))
+            else:
+                left_gripper_action = None
+                left_waypoint_pos, left_waypoint_ori = robot.get_eef_pose("left")
+
+            if len(right_mp_waypoints) > 0:
+                gripper_actions = np.array([waypoint.gripper_action for waypoint in right_mp_waypoints])
+                # This is not necessarily true since while teleopating as a non-optimal teleoperator, I inadvertently would toggle gripper on / off
+                # Specially when trying to grasp. So removed this assertion
+                # assert (gripper_actions[:, 1] == gripper_actions[0, 1]).all()
+                right_waypoint = right_mp_waypoints[-1]
+                right_gripper_action = right_waypoint.gripper_action
+                right_waypoint_pos, right_waypoint_ori = th.tensor(right_waypoint.pose[4:7, 3]), T.mat2quat(th.tensor(right_waypoint.pose[4:7, 0:3]))
+            else:
+                right_gripper_action = None
+                right_waypoint_pos, right_waypoint_ori = robot.get_eef_pose("right")
+
+            
+            # If baseline is mimicgen, perform interpolation + replay
+            if baseline == "mimicgen":
+                # ========================================= ARM INTERPOLATION START =============================================
+                step_size = 0.005
+                current_left_eef_pose = robot.get_eef_pose("left")
+                if object_ref["arm_left"] is None:
+                    poses_left = th.tensor(T.pose2mat(current_left_eef_pose), dtype=th.float32).unsqueeze(0)
+                else:
+                    poses_left, _ = PoseUtils.interpolate_poses(
+                        pose_1=T.pose2mat(current_left_eef_pose),
+                        pose_2=th.tensor(left_waypoint.pose[:4], dtype=th.float32),
+                        step_size=step_size,
+                    )
+                    # poses_left = th.tensor(poses_left, dtype=th.float32)
+
+                current_right_eef_pose = robot.get_eef_pose("right")
+                if object_ref["arm_right"] is None:
+                    poses_right = th.tensor(T.pose2mat(current_right_eef_pose), dtype=th.float32).unsqueeze(0)
+                else:
+                    poses_right, _ = PoseUtils.interpolate_poses(
+                        pose_1=T.pose2mat(current_right_eef_pose),
+                        pose_2=th.tensor(right_waypoint.pose[:4], dtype=th.float32),
+                        step_size=step_size,
+                    )
+                    # poses_right = th.tensor(poses_right, dtype=th.float32)
+                
+                print("len(poses_left): ", len(poses_left))
+                print("len(poses_right): ", len(poses_right))
+                # Perform padding
+                if len(poses_left) < len(poses_right):
+                    repeat_times = len(poses_right) - len(poses_left) + 1
+                    poses_left = poses_left.repeat(repeat_times, 1, 1)
+                elif len(poses_right) < len(poses_left):
+                    repeat_times = len(poses_left) - len(poses_right) + 1
+                    poses_right = poses_right.repeat(repeat_times, 1, 1)
+
+                assert len(poses_left) == len(poses_right)
+                poses = np.concatenate([poses_left, poses_right], axis=1)
+
+                # breakpoint()
+                init_global_env_step = env.global_env_step
+                arm_interp_start_time = time.time()
+                for pose in poses:
+                    interp_action = env_interface.target_pose_to_action(target_pose=pose)
+
+                    interp_action[env_interface.gripper_action_dim[0]] = left_waypoint.gripper_action[0]
+                    interp_action[env_interface.gripper_action_dim[1]] = right_waypoint.gripper_action[1]
+
+                    state = env.get_state()["states"]
+                    obs, obs_info = env.get_obs_IL()
+                    datagen_info = env_interface.get_datagen_info(action=interp_action)
+                    env.step(interp_action, video_writer)
+                    left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
+                    right_eef_pose = (pose[4:7, 3], T.mat2quat(th.tensor(pose[4:7, 0:3])))
+                    if enable_marker_vis:
+                        env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                        env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                        env.eef_goal_marker_left.set_position_orientation(*left_eef_pose)
+                        env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
+                    local_env_step += 1
+                    env.global_env_step += 1
+                    states.append(state)
+                    actions.append(interp_action)
+                    observations.append(obs)
+                    observations_info.append(json.dumps(obs_info))
+                    datagen_infos.append(datagen_info)
+                    cur_success_metrics = env.is_success()
+                    self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                    for k in success:
+                        success[k] = success[k] or cur_success_metrics[k]
+
+                arm_interp_finish_time = time.time()
+                phase_logs[env.execution_phase_ind]["arm_interp_execution_time"][0] = round(arm_interp_finish_time - arm_interp_start_time, 2)
+                print("Time taken for arm interpolation: ", phase_logs[env.execution_phase_ind]["arm_interp_execution_time"][0])
+
+                num_phase_steps = env.global_env_step - init_global_env_step
+                for sensor_name, sensor in env.robot.sensors.items():
+                    if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                        shortened_sensor_name = sensor_name.split(":")[1]
+                        if num_phase_steps > 0:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                        else:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_{shortened_sensor_name}"]= 0
+                        print(f"Visibility stats for arm_interp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_{shortened_sensor_name}"])
+
+
+                # Setting the interpolation ranges
+                MP_end_step_local_list = [local_env_step, local_env_step]
+                # Set the MP ranges to save to hdf5 file
+                left_mp_ranges, right_mp_ranges = None, None
+                if len(left_mp_waypoints) > 0:
+                    left_mp_ranges = [init_global_env_step, env.global_env_step]
+                if len(right_mp_waypoints) > 0:
+                    right_mp_ranges = [init_global_env_step, env.global_env_step]
+                # =============================================== ARM INTERPOLATION END ==================================================
+
+            # If baseline is skillgen, perform mp + replay  
+            elif baseline == "skillgen":
+                # =============================================== Arm MP Planning =============================================
+                
+                # If at least one hand has motion planner waypoints, plan the motion
+                if len(left_mp_waypoints) > 0 or len(right_mp_waypoints) > 0:
+                    target_pos = {
+                        robot.eef_link_names["left"]: left_waypoint_pos,
+                        robot.eef_link_names["right"]: right_waypoint_pos,
+                    }
+                    target_quat = {
+                        robot.eef_link_names["left"]: left_waypoint_ori,
+                        robot.eef_link_names["right"]: right_waypoint_ori,
+                    }
+                    emb_sel = CuRoboEmbodimentSelection.ARM_NO_TORSO
+                    
+                    # Use OG to know attached objects
+                    retval = self.obtain_attached_object(env, robot)
+                    attached_obj = retval["attached_obj"]
+                    attached_obj_scale = retval["attached_obj_scale"]
+
+                    # If one of the arm does not hav a ref object, remove it from the target pose of MP (will move this arm randomly in this case)
+                    if object_ref["arm_right"] is None:
+                        del target_pos["right_eef_link"]
+                        del target_quat["right_eef_link"]
+                    elif object_ref["arm_left"] is None:
+                        del target_pos["left_eef_link"]
+                        del target_quat["left_eef_link"]
+
+                    print("ARM MP START")
+                    eyes_target_pos, eyes_target_quat = None, None
+
+                    if enable_marker_vis:
+                        env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                        env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                        env.eef_goal_marker_left.set_position_orientation(position=left_waypoint_pos, orientation=left_waypoint_ori)
+                        env.eef_goal_marker_right.set_position_orientation(position=right_waypoint_pos, orientation=right_waypoint_ori)
+
+                    # For manipulation, doing multiple tries does not help much (observed empirically). So, we set num_tries to 1
+                    num_tries = 3
+                    arm_mp_trial = 0
+                    new_target_pos = copy.deepcopy(target_pos)
+                    while True:
+                        
+                        # Base condition 
+                        if arm_mp_trial > 0:
+                            
+                            # If we are not retrying nav on ARM IK/TrajOpt failures, no need to run num_tries times as it most likely won't succeed. So, we can save time
+                            if env.retry_nav_on_arm_mp_failure:
+                                base_condition = arm_mp_trial == num_tries
+                            else:
+                                base_condition = arm_mp_trial == num_tries or ("IK Fail" in mp_results[0].status.value)
+                            
+                            if base_condition:
+                                print("Arm MP failed after {} trials. Giving up.".format(num_tries))
+                                if "TrajOpt Fail" in mp_results[0].status.value:
+                                    env.err = "ArmMPTrajOptFailed"
+                                elif "IK Fail" in mp_results[0].status.value:
+                                    env.err = "ArmMPIKFailed"
+                                else:
+                                    env.err = "ArmMPOtherFailed"
+                                env.valid_env = False 
+                                env.execution_phase_ind += 1
+                                return None
+                                    
+                        # breakpoint()
+                        # Aggregate target_pos and target_quat to match batch_size
+                        new_target_pos = {k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in new_target_pos.items()}
+                        new_target_quat = {
+                            k: th.stack([v for _ in range(env.primitive._motion_generator.batch_size)]) for k, v in target_quat.items()
+                        }
+                        
+                        arm_mp_planning_start_time = time.time()
+                        # Generate collision-free trajectories to the sampled eef poses (including self-collisions)
+                        mp_results, traj_paths = env.cmg.compute_trajectories(
+                            target_pos=new_target_pos,
+                            target_quat=new_target_quat,
+                            is_local=False,
+                            max_attempts=50,
+                            timeout=60.0,
+                            ik_fail_return=10,
+                            enable_finetune_trajopt=True,
+                            finetune_attempts=1,
+                            return_full_result=True,
+                            success_ratio=1.0 / env.primitive._motion_generator.batch_size,
+                            attached_obj=attached_obj,
+                            attached_obj_scale=attached_obj_scale,
+                            emb_sel=emb_sel,
+                            eyes_target_pos=eyes_target_pos,
+                            eyes_target_quat=eyes_target_quat,
+                        )
+                        arm_mp_planning_finish_time = time.time()
+                        phase_logs[env.execution_phase_ind]["arm_mp_planning_time"][arm_mp_trial] = round(arm_mp_planning_finish_time - arm_mp_planning_start_time, 2)
+
+                        successes = mp_results[0].success 
+                        print("Arm MP successes: ", successes)
+                        success_idx = th.where(successes)[0].cpu()
+                        
+                        if len(success_idx) == 0:
+                            print(f"Arm MP trial {arm_mp_trial} failed with status {mp_results[0].status}. Retrying...")
+                            arm_mp_trial += 1
+                            # modify target_pos a bit
+                            for k in target_pos.keys():
+                                new_target_pos[k] = target_pos[k] + th.rand(3) * 0.01 - 0.005
+                            continue
+                        else:
+                            traj_path = traj_paths[success_idx[0]]
+                            break
+                
+                    print("Time taken for arm MP planning: ", phase_logs[env.execution_phase_ind]["arm_mp_planning_time"])
+                    # ========================================================= End of Arm MP Planning ==========================================================
+
+                    # ========================================================== Arm MP Execution ==========================================================
+                    arm_mp_execution_start_time = time.time()
+
+                    # Convert planned joint trajectory to actions
+                    # Need to call q_to_action after every env.step if the base is moving; we cannot pre-compute all actions
+                    q_traj = env.cmg.path_to_joint_trajectory(traj_path, get_full_js=True, emb_sel=emb_sel)
+                    q_traj = th.stack(env.primitive._add_linearly_interpolated_waypoints(plan=q_traj, max_inter_dist=0.01))
+                    q_traj = q_traj.cpu()
+                    mp_actions = []
+                    for j_pos in q_traj:
+
+                        # If option 2 was chosen for handling arm with no ref object, we can make the action for that arm as 0
+                        if object_ref["arm_left"] is None:
+                            j_pos[robot.arm_control_idx["left"]] = robot.get_joint_positions()[robot.arm_control_idx["left"]]
+                        elif object_ref["arm_right"] is None:
+                            j_pos[robot.arm_control_idx["right"]] = robot.get_joint_positions()[robot.arm_control_idx["right"]]
+
+                        action = robot.q_to_action(j_pos).cpu().numpy()
+
+                        # Add gripper actions from the original waypoints (we already checked that they are the same across MP trajectories)
+                        if left_gripper_action is not None:
+                            action[env_interface.gripper_action_dim[0]] = left_gripper_action[0]
+                        if right_gripper_action is not None:
+                            action[env_interface.gripper_action_dim[1]] = right_gripper_action[1]
+                        
+                        mp_actions.append(action)
+
+                    left_eef_poses = [(left_waypoint_pos, left_waypoint_ori)] * len(mp_actions)
+                    right_eef_poses = [(right_waypoint_pos, right_waypoint_ori)] * len(mp_actions)
+
+                    # If the left hand has no motion planner waypoints, we start replaying the left hand waypoints while the right hand are following the MP trajectory.
+                    if len(left_mp_waypoints) == 0:
+                        # We need to pad the left hand waypoints to match the length of the MP trajectory
+                        if len(left_replay_waypoints) < len(mp_actions):
+                            for _ in range(len(mp_actions) - len(left_replay_waypoints)):
+                                left_replay_waypoints.append(last_waypoint)
+
+                        left_eef_poses = []
+                        # We convert the target pose of the left hand to replay_action
+                        # Then we *overwrite* the motion planner action with the replay action for the left arm and gripper
+                        for i, action in enumerate(mp_actions):
+                            replay_action = env_interface.target_pose_to_action(target_pose=left_replay_waypoints[i].pose)
+                            left_eef_poses.append((left_replay_waypoints[i].pose[0:3, 3], T.mat2quat(th.tensor(left_replay_waypoints[i].pose[0:3, 0:3]))))
+                            action_idx = robot.controller_action_idx["arm_left"]
+                            action[action_idx] = replay_action[action_idx]
+                            action[env_interface.gripper_action_dim[0]] = left_replay_waypoints[i].gripper_action[0]
+
+                        # We remove the waypoints that have been replayed for the left arm
+                        left_replay_waypoints = left_replay_waypoints[len(mp_actions):]
+
+                    # Same logic as above but for the right hand
+                    elif len(right_mp_waypoints) == 0:
+                        if len(right_replay_waypoints) < len(mp_actions):
+                            for _ in range(len(mp_actions) - len(right_replay_waypoints)):
+                                right_replay_waypoints.append(last_waypoint)
+                        right_eef_poses = []
+                        for i, action in enumerate(mp_actions):
+                            replay_action = env_interface.target_pose_to_action(target_pose=right_replay_waypoints[i].pose)
+                            right_eef_poses.append((right_replay_waypoints[i].pose[4:7, 3], T.mat2quat(th.tensor(right_replay_waypoints[i].pose[4:7, 0:3]))))
+                            action_idx = robot.controller_action_idx["arm_right"]
+                            action[action_idx] = replay_action[action_idx]
+                            action[env_interface.gripper_action_dim[1]] = right_replay_waypoints[i].gripper_action[1]
+
+                        right_replay_waypoints = right_replay_waypoints[len(mp_actions):]
+
+                    assert len(mp_actions) == len(left_eef_poses) == len(right_eef_poses)
+
+                    init_global_env_step = env.global_env_step
+                    num_repeat = 1
+                    for i, mp_action in enumerate(mp_actions):
+                        for _ in range(num_repeat):
+                            state = env.get_state()["states"]
+                            obs, obs_info = env.get_obs_IL()
+                            datagen_info = env_interface.get_datagen_info(action=mp_action)
+                            # TODO: Check if we can use primtiive stack execute action here. This will allow for checking convergence errors etc.
+                            env.step(mp_action, video_writer)
+                            if enable_marker_vis:
+                                env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                                env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                                env.eef_goal_marker_left.set_position_orientation(*left_eef_poses[i])
+                                env.eef_goal_marker_right.set_position_orientation(*right_eef_poses[i])
+                            local_env_step += 1
+                            env.global_env_step += 1
+                            states.append(state)
+                            actions.append(mp_action)
+                            observations.append(obs)
+                            observations_info.append(json.dumps(obs_info))
+                            datagen_infos.append(datagen_info)
+                            cur_success_metrics = env.is_success()
+                            self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                            for k in success:
+                                success[k] = success[k] or cur_success_metrics[k]
+
+                # Set the MP ranges to save to hdf5 file
+                left_mp_ranges, right_mp_ranges = None, None
+                if len(left_mp_waypoints) > 0:
+                    left_mp_ranges = [init_global_env_step, env.global_env_step]
+                if len(right_mp_waypoints) > 0:
+                    right_mp_ranges = [init_global_env_step, env.global_env_step]
+                
+                
+                MP_end_step_local = copy.deepcopy(local_env_step)
+                # left MP points
+                if len(left_mp_waypoints) == 0: 
+                    left_MP_end_step_local = 0
+                else: 
+                    left_MP_end_step_local = MP_end_step_local
+                if len(right_mp_waypoints) == 0: 
+                    right_MP_end_step_local = 0
+                else: 
+                    right_MP_end_step_local = MP_end_step_local
+
+                MP_end_step_local_list = [left_MP_end_step_local, right_MP_end_step_local]
+
+                arm_mp_execution_finish_time = time.time()
+                # Since there is only 1 trial for arm MP execution, we set the 0th index
+                phase_logs[env.execution_phase_ind]["arm_mp_execution_time"][0] = round(arm_mp_execution_finish_time - arm_mp_execution_start_time, 2)
+                print("Time taken for arm MP execution:", phase_logs[env.execution_phase_ind]["arm_mp_execution_time"][0])
+                
+                num_phase_steps = env.global_env_step - init_global_env_step
+                for sensor_name, sensor in env.robot.sensors.items():
+                    if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                        shortened_sensor_name = sensor_name.split(":")[1]
+                        if num_phase_steps > 0:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                        else:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"]= 0
+                        print(f"Visibility stats for arm_mp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"])
+
+                
+                # ============================================== End of Arm MP ==========================================================
+
+            # ================================================== Arm Replay ==========================================================
+            # reset the visibility counter for each sensor
+            self.reset_visibility_counter(env)
+            
+            # We need to pad the waypoints for the left and right hands to match the length of the longest trajectory
+            if len(left_replay_waypoints) < len(right_replay_waypoints):
+                for _ in range(len(right_replay_waypoints) - len(left_replay_waypoints)):
+                    left_replay_waypoints.append(last_waypoint)
+            elif len(right_replay_waypoints) < len(left_replay_waypoints):
+                for _ in range(len(left_replay_waypoints) - len(right_replay_waypoints)):
+                    right_replay_waypoints.append(last_waypoint)
+
+            assert len(left_replay_waypoints) == len(right_replay_waypoints)
+            # print('length of replay actions:', len(left_replay_waypoints))
+            print("ARM REPLAY START")
+            arm_replay_start_time = time.time()
+            # breakpoint()
+            
+            # If one of the arms has no ref object, we set its target pose as the current pose
+            if object_ref["arm_right"] is None:
+                current_right_ee_pose = robot.get_eef_pose("right")
+                current_right_ee_pos = current_right_ee_pose[0]
+                current_right_ee_quat = current_right_ee_pose[1]
+                current_right_ee_matrix = T.quat2mat(current_right_ee_quat)
+                current_right_ee_pose = th.eye(4)
+                current_right_ee_pose[:3, :3] = current_right_ee_matrix
+                current_right_ee_pose[:3, 3] = current_right_ee_pos
+            elif object_ref["arm_left"] is None:
+                current_left_ee_pose = robot.get_eef_pose("left")
+                current_left_ee_pos = current_left_ee_pose[0]
+                current_left_ee_quat = current_left_ee_pose[1]
+                current_left_ee_matrix = T.quat2mat(current_left_ee_quat)
+                current_left_ee_pose = th.eye(4)
+                current_left_ee_pose[:3, :3] = current_left_ee_matrix
+                current_left_ee_pose[:3, 3] = current_left_ee_pos
+            
+            # For each pair of waypoints, we extract the pose for each hand and then convert to action
+            # We also overwrite the gripper actions with the ones from the waypoints
+            init_global_env_step = env.global_env_step
+            for left_waypoint, right_waypoint in zip(left_replay_waypoints, right_replay_waypoints):
+                pose = np.zeros((8, 4))
+                pose[:4, :] = left_waypoint.pose[:4, :]
+                pose[4:, :] = right_waypoint.pose[4:, :]
+                # If one of the arms has no ref object, we set its target pose as the current pose
+                if object_ref["arm_right"] is None:
+                    pose[4:, :] = current_right_ee_pose
+                elif object_ref["arm_left"] is None:
+                    pose[:4, :] = current_left_ee_pose
+                replay_action = env_interface.target_pose_to_action(target_pose=pose)
+
+                replay_action[env_interface.gripper_action_dim[0]] = left_waypoint.gripper_action[0]
+                replay_action[env_interface.gripper_action_dim[1]] = right_waypoint.gripper_action[1]
+
+                state = env.get_state()["states"]
+                temp_start_time = time.time()
+                obs, obs_info = env.get_obs_IL()
+                datagen_info = env_interface.get_datagen_info(action=replay_action)
+                env.step(replay_action, video_writer)
+                left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
+                right_eef_pose = (pose[4:7, 3], T.mat2quat(th.tensor(pose[4:7, 0:3])))
+                if enable_marker_vis:
+                    env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
+                    env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
+                    env.eef_goal_marker_left.set_position_orientation(*left_eef_pose)
+                    env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
+                local_env_step += 1
+                env.global_env_step += 1
+                states.append(state)
+                actions.append(replay_action)
+                observations.append(obs)
+                observations_info.append(json.dumps(obs_info))
+                datagen_infos.append(datagen_info)
+                cur_success_metrics = env.is_success()
+                self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                for k in success:
+                    success[k] = success[k] or cur_success_metrics[k]
+
+            arm_replay_finish_time = time.time()
+            phase_logs[env.execution_phase_ind]["arm_replay_execution_time"][0] = round(arm_replay_finish_time - arm_replay_start_time, 2)
+            print("Time taken for arm replay: ", phase_logs[env.execution_phase_ind]["arm_replay_execution_time"][0])
+
+            num_phase_steps = env.global_env_step - init_global_env_step
+            for sensor_name, sensor in env.robot.sensors.items():
+                if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                    shortened_sensor_name = sensor_name.split(":")[1]
+                    if num_phase_steps > 0:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                    else:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"]= 0
+                    print(f"Visibility stats for arm_replay {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"])
+            # =================================================== End of Arm Replay ==========================================================
+
+            results = dict(
+                states=states,
+                observations=observations,
+                datagen_infos=datagen_infos,
+                actions=np.array(actions),
+                success=bool(success["task"]),
+                mp_end_steps=MP_end_step_local_list,
+                subtask_lengths=local_env_step,
+                left_mp_ranges=left_mp_ranges,
+                right_mp_ranges=right_mp_ranges,
+                retry_nav=False,
+                observations_info=observations_info
+            )
+            env.execution_phase_ind += 1
+            env.phases_completed_wo_mp_err += 1
+            return results
+
+
+
     def execute(
         self, 
         env,
@@ -685,6 +1334,7 @@ class WaypointTrajectory(object):
                     state = env.get_state()["states"]
                     obs, obs_info = env.get_obs_IL()
                     datagen_info = env_interface.get_datagen_info(action=mp_action)
+                    # print("mp_action[robot.base_action_idx]: ", mp_action[robot.base_action_idx])
                     env.step(mp_action, video_writer)
                     local_env_step += 1
                     env.global_env_step += 1
@@ -693,34 +1343,23 @@ class WaypointTrajectory(object):
                     observations.append(obs)
                     observations_info.append(json.dumps(obs_info))
                     datagen_infos.append(datagen_info)
-
-                    # Check reference object visibility
-                    seg_instance = obs[f"{env.robot_name}::{env.robot_name}:eyes:Camera:0::seg_instance"]
-                    seg_instance_info = obs_info[f"{env.robot_name}"][f"{env.robot_name}:eyes:Camera:0"]["seg_instance"]
-                    obj_key = next((key for key, value in seg_instance_info.items() if value == ref_obj.name), None)
-                    if obj_key is None:
-                        count = 0
-                    else:
-                        count = (seg_instance == obj_key).sum().item()
-                    if count > 0:
-                        env.num_frames_with_obj_visible += 1
-                    # plt.imshow(seg_instance.cpu().numpy())
-                    # plt.show()
-
-                    # cur_success_metrics = env.is_success()
-                    # for k in success:
-                    #     success[k] = success[k] or cur_success_metrics[k]
+                    self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
 
                 # Save timings to current_phase_logs
                 nav_execution_finish_time = time.time()
                 phase_logs[env.execution_phase_ind]["base_sampling_time"][base_mp_trial] = env.primitive.base_sampling_time
                 phase_logs[env.execution_phase_ind]["base_mp_planning_time"][base_mp_trial] = env.primitive.base_mp_planning_time
                 phase_logs[env.execution_phase_ind]["base_mp_execution_time"][base_mp_trial] = round(nav_execution_finish_time - nav_execution_start_time, 2)
-                if len(actions) > 0:
-                    phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"] = env.num_frames_with_obj_visible / len(actions)
-                else:
-                    phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"] = 0
-                print("Percentage of frames with object visible: ", phase_logs[env.execution_phase_ind]["num_frames_with_obj_visible"])
+                
+                num_phase_steps = env.global_env_step - init_global_env_step
+                for sensor_name, sensor in env.robot.sensors.items():
+                    if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                        shortened_sensor_name = sensor_name.split(":")[1]
+                        if num_phase_steps > 0:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                        else:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_{shortened_sensor_name}"]= 0
+                        print(f"Visibility stats for nav_mp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_{shortened_sensor_name}"])
 
                 if not nav_mp_success:
                     # This will happen if
@@ -732,7 +1371,9 @@ class WaypointTrajectory(object):
                     if env.primitive.mp_err in ["BaseExecutionBaseTargetNotReached", "BaseExecutionArmTorsoTargetNotReached"]:
                         og.sim.load_state(init_state)
                         for _ in range(5): og.sim.step()
-                        env.num_frames_with_obj_visible = 0
+                        
+                        # Reset the visibility stats
+                        self.reset_visibility_counter(env)
 
                     continue
                 
@@ -1030,6 +1671,9 @@ class WaypointTrajectory(object):
                 # ========================================================= End of Arm MP Planning ==========================================================
                 
                 # ========================================================== Arm MP Execution ==========================================================
+                # reset the visibility counter for each sensor
+                self.reset_visibility_counter(env)
+
                 arm_mp_execution_start_time = time.time()
 
                 # These lines are for debugging purposes.
@@ -1124,6 +1768,7 @@ class WaypointTrajectory(object):
                         observations_info.append(json.dumps(obs_info))
                         datagen_infos.append(datagen_info)
                         cur_success_metrics = env.is_success()
+                        self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                         for k in success:
                             success[k] = success[k] or cur_success_metrics[k]
 
@@ -1181,9 +1826,22 @@ class WaypointTrajectory(object):
             # Since there is only 1 trial for arm MP execution, we set the 0th index
             phase_logs[env.execution_phase_ind]["arm_mp_execution_time"][0] = round(arm_mp_execution_finish_time - arm_mp_execution_start_time, 2)
             print("Time taken for arm MP execution:", phase_logs[env.execution_phase_ind]["arm_mp_execution_time"][0])
-            # ============================================== End of Arm MP ==========================================================
+            
+            num_phase_steps = env.global_env_step - init_global_env_step
+            for sensor_name, sensor in env.robot.sensors.items():
+                if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                    shortened_sensor_name = sensor_name.split(":")[1]
+                    if num_phase_steps > 0:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                    else:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"]= 0
+                    print(f"Visibility stats for arm_mp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"])
+            # ============================================== End of Arm MP Execution ==========================================================
             
             # ================================================== Arm Replay ==========================================================
+            # reset the visibility counter for each sensor
+            self.reset_visibility_counter(env)
+            
             # We need to pad the waypoints for the left and right hands to match the length of the longest trajectory
             if len(left_replay_waypoints) < len(right_replay_waypoints):
                 for _ in range(len(right_replay_waypoints) - len(left_replay_waypoints)):
@@ -1198,7 +1856,7 @@ class WaypointTrajectory(object):
             arm_replay_start_time = time.time()
             # breakpoint()
             
-            # Temporary fix for only moving the left arm (for single arm tasks) during replay
+            # If one of the arms has no ref object, we set its target pose as the current pose
             if object_ref["arm_right"] is None:
                 current_right_ee_pose = robot.get_eef_pose("right")
                 current_right_ee_pos = current_right_ee_pose[0]
@@ -1216,6 +1874,7 @@ class WaypointTrajectory(object):
                 current_left_ee_pose[:3, :3] = current_left_ee_matrix
                 current_left_ee_pose[:3, 3] = current_left_ee_pos
             
+            init_global_env_step = env.global_env_step
             # For each pair of waypoints, we extract the pose for each hand and then convert to action
             # We also overwrite the gripper actions with the ones from the waypoints
             for left_waypoint, right_waypoint in zip(left_replay_waypoints, right_replay_waypoints):
@@ -1253,18 +1912,33 @@ class WaypointTrajectory(object):
                 observations_info.append(json.dumps(obs_info))
                 datagen_infos.append(datagen_info)
                 cur_success_metrics = env.is_success()
+                self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                 for k in success:
                     success[k] = success[k] or cur_success_metrics[k]
 
             arm_replay_finish_time = time.time()
             phase_logs[env.execution_phase_ind]["arm_replay_execution_time"][0] = round(arm_replay_finish_time - arm_replay_start_time, 2)
             print("Time taken for arm replay: ", phase_logs[env.execution_phase_ind]["arm_replay_execution_time"][0])
+            
+            num_phase_steps = env.global_env_step - init_global_env_step
+            for sensor_name, sensor in env.robot.sensors.items():
+                if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                    shortened_sensor_name = sensor_name.split(":")[1]
+                    if num_phase_steps > 0:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                    else:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"]= 0
+                    print(f"Visibility stats for arm_replay {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"])
+
             # =================================================== End of Arm Replay ==========================================================
 
             # =================================================== Arm/Torso Retract ==========================================================
-            # TODO: Implement retract based on annotation only
             if retract_type != "no_retract":
                 print("Starting Retract")
+                
+                # reset the visibility counter for each sensor
+                self.reset_visibility_counter(env)
+                
                 retract_torso_only = False
                 current_robot_base_pose_wrt_world = robot.get_position_orientation()
                 # If we retract the left and right eef to the pose at the start of arm MP
@@ -1400,6 +2074,7 @@ class WaypointTrajectory(object):
                     num_repeat = 1
                     init_left_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
                     init_right_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
+                    init_global_env_step = env.global_env_step
                     for j_pos in q_traj:
                         if retract_type == "retract_to_start_of_arm_mp":
                             if arm_side == "left":
@@ -1423,15 +2098,31 @@ class WaypointTrajectory(object):
                         observations_info.append(json.dumps(obs_info))
                         datagen_infos.append(datagen_info)
                         cur_success_metrics = env.is_success()
+                        self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                         for k in success:
                             success[k] = success[k] or cur_success_metrics[k]
 
                     full_retract_mp_execution_finish_time = time.time()
                     phase_logs[env.execution_phase_ind]["full_retract_mp_execution_time"][0] = round(full_retract_mp_execution_finish_time - full_retract_mp_execution_start_time, 2)
 
+                    num_phase_steps = env.global_env_step - init_global_env_step
+                    for sensor_name, sensor in env.robot.sensors.items():
+                        if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                            shortened_sensor_name = sensor_name.split(":")[1]
+                            if num_phase_steps > 0:
+                                phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                            else:
+                                phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_{shortened_sensor_name}"]= 0
+                            print(f"Visibility stats for full_retract {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_{shortened_sensor_name}"])
+
+                
                 # If full retract failed, try retracting only the torso
                 if retract_torso_only and retract_type != "retract_to_start_of_arm_mp":
                     print("Retracting torso only")
+                    
+                    # reset the visibility counter for each sensor
+                    self.reset_visibility_counter(env)
+                    
                     target_pos = {"eyes": eyes_reset_pose_wrt_world[0]}
                     target_quat = {"eyes": eyes_reset_pose_wrt_world[1]}
 
@@ -1477,6 +2168,7 @@ class WaypointTrajectory(object):
                         num_repeat = 1
                         init_left_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
                         init_right_arm_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
+                        init_global_env_step = env.global_env_step
                         for j_pos in q_traj:
                             mp_action = robot.q_to_action(j_pos).cpu().numpy()
                             mp_action[robot.gripper_action_idx["left"]] = grasp_action["left"]
@@ -1497,11 +2189,23 @@ class WaypointTrajectory(object):
                             observations_info.append(json.dumps(obs_info))
                             datagen_infos.append(datagen_info)
                             cur_success_metrics = env.is_success()
+                            self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                             for k in success:
                                 success[k] = success[k] or cur_success_metrics[k]
                         
                         torso_retract_mp_execution_finish_time = time.time()
                         phase_logs[env.execution_phase_ind]["torso_retract_mp_execution_time"][0] = round(torso_retract_mp_execution_finish_time - torso_retract_mp_execution_start_time, 2)
+                        
+                        num_phase_steps = env.global_env_step - init_global_env_step
+                        for sensor_name, sensor in env.robot.sensors.items():
+                            if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
+                                shortened_sensor_name = sensor_name.split(":")[1]
+                                if num_phase_steps > 0:
+                                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_{shortened_sensor_name}"] = env.num_frames_with_obj_visible[shortened_sensor_name] / num_phase_steps
+                                else:
+                                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_{shortened_sensor_name}"]= 0
+                                print(f"Visibility stats for torso_retract {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_{shortened_sensor_name}"])
+
             # ================================================== End of Arm/Torso Retract ==========================================================
                     
             results = dict(

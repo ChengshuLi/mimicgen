@@ -164,6 +164,7 @@ def generate_dataset(
     ds_ratio=1,
     no_partial_tasks=False,
     headless=False,
+    baseline=None,
 ):
     """
     Main function to collect a new dataset with MimicGen.
@@ -313,6 +314,7 @@ def generate_dataset(
         use_depth_obs=use_depth_obs,
         manipulation_only=False,
         real_robot_mode=False,
+        baseline=baseline,
     )
     print("\n==== Using environment with the following metadata ====")
     print(json.dumps(env.serialize(), indent=4))
@@ -428,22 +430,42 @@ def generate_dataset(
         # generate trajectory
         try:
             episode_start_time = time.time()
-            generated_traj = data_generator.generate(
-                env=env,
-                env_interface=env_interface,
-                select_src_per_subtask=mg_config.experiment.generation.select_src_per_subtask,
-                transform_first_robot_pose=mg_config.experiment.generation.transform_first_robot_pose,
-                interpolate_from_last_target_pose=mg_config.experiment.generation.interpolate_from_last_target_pose,
-                render=render,
-                video_writer=video_writer,
-                video_skip=video_skip,
-                camera_names=render_image_names,
-                pause_subtask=pause_subtask,
-                enable_marker_vis=enable_marker_vis,
-                ds_ratio=ds_ratio,
-                grasp_init_views_video_writer=None,
-                no_partial_tasks=no_partial_tasks,
-            )
+            if baseline is None:
+                generated_traj = data_generator.generate(
+                    env=env,
+                    env_interface=env_interface,
+                    select_src_per_subtask=mg_config.experiment.generation.select_src_per_subtask,
+                    transform_first_robot_pose=mg_config.experiment.generation.transform_first_robot_pose,
+                    interpolate_from_last_target_pose=mg_config.experiment.generation.interpolate_from_last_target_pose,
+                    render=render,
+                    video_writer=video_writer,
+                    video_skip=video_skip,
+                    camera_names=render_image_names,
+                    pause_subtask=pause_subtask,
+                    enable_marker_vis=enable_marker_vis,
+                    ds_ratio=ds_ratio,
+                    grasp_init_views_video_writer=None,
+                    no_partial_tasks=no_partial_tasks,
+                    baseline=baseline,
+                )
+            else:
+                 generated_traj = data_generator.generate_baseline(
+                    env=env,
+                    env_interface=env_interface,
+                    select_src_per_subtask=mg_config.experiment.generation.select_src_per_subtask,
+                    transform_first_robot_pose=mg_config.experiment.generation.transform_first_robot_pose,
+                    interpolate_from_last_target_pose=mg_config.experiment.generation.interpolate_from_last_target_pose,
+                    render=render,
+                    video_writer=video_writer,
+                    video_skip=video_skip,
+                    camera_names=render_image_names,
+                    pause_subtask=pause_subtask,
+                    enable_marker_vis=enable_marker_vis,
+                    ds_ratio=ds_ratio,
+                    grasp_init_views_video_writer=None,
+                    no_partial_tasks=no_partial_tasks,
+                    baseline=baseline,
+                )
             episode_time_taken = time.time() - episode_start_time
             print("==============================")
             print("Time taken for generation: {:.2f} seconds".format(episode_time_taken))
@@ -780,6 +802,7 @@ def main(args):
             ds_ratio=args.ds_ratio,
             no_partial_tasks=args.no_partial_tasks,
             headless=args.headless,
+            baseline=args.baseline,
         )
     except Exception as e:
         res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
@@ -891,6 +914,12 @@ if __name__ == "__main__":
         "--no_partial_tasks",
         action='store_true',
         help="disable the marker visualization when generating data, the markers are mainly for vis the eef pose and target pose",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        help="baseline to run. Options: mimicgen or skillgen",
+        default=None,
     )
 
     args = parser.parse_args()

@@ -253,7 +253,7 @@ def interpolate_poses(pose_1, pose_2, num_steps=None, step_size=None, perturb=Fa
     pos_steps = np.concatenate([pos_steps, pos2[None]], axis=0)
 
     # interpolate the rotations too
-    rot_steps = interpolate_rotations(R1=rot1, R2=rot2, num_steps=num_steps, axis_angle=True)
+    rot_steps = interpolate_rotations(R1=rot1, R2=rot2, num_steps=num_steps, axis_angle=False)
 
     pose_steps = make_pose(pos_steps, rot_steps)
     return pose_steps, num_steps - 1

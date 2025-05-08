@@ -271,6 +271,7 @@ def parse_source_dataset_bimanual(
     datagen_infos = []
     subtask_indices = []
     demo_lens = []
+    actions = []
     for ind in tqdm(range(len(demo_keys))):
         ep = demo_keys[ind]
         ep_grp = f["data/{}".format(ep)]
@@ -288,6 +289,7 @@ def parse_source_dataset_bimanual(
         datagen_infos.append(ep_datagen_info_obj)
         # OG uses "action" rather than "actions"
         action = ep_grp["actions"] if "actions" in ep_grp else ep_grp["action"]
+        actions.append(np.array(action))
         num_steps = action.shape[0]
         demo_lens.append(num_steps)
 
@@ -371,7 +373,7 @@ def parse_source_dataset_bimanual(
         subtask_term_offset_ranges[-1].append(subtask_term_offset_ranges_l)
         subtask_term_offset_ranges[-1].append(subtask_term_offset_ranges_r)
     
-    return datagen_infos, subtask_indices, subtask_term_signals, subtask_term_offset_ranges
+    return datagen_infos, subtask_indices, subtask_term_signals, subtask_term_offset_ranges, actions
 
 
 def write_demo_to_hdf5(
@@ -444,12 +446,13 @@ def write_demo_to_hdf5(
 
     # write observations
     obs = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
-    # check if we don't write seg_instance how much space do we save
+    # TODO: check if we don't write seg_instance how much space do we save
     ignore_keys = ["robot_r1::robot_r1:left_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:right_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:eyes:Camera:0::seg_instance"]
     for k in obs:
-        if k in ignore_keys:
-            # ignore seg_instance
-            continue
+        # Uncomment in case we don't want to write seg_instance
+        # if k in ignore_keys:
+        #     # ignore seg_instance
+        #     continue
         ep_data_grp.create_dataset("obs/{}".format(k), data=np.stack(obs[k]), compression="gzip")
 
     # write observations info
