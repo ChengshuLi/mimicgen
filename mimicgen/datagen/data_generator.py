@@ -553,6 +553,7 @@ class DataGenerator(object):
                 for sensor_name, sensor in env.robot.sensors.items():
                     if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
                         env.num_frames_with_obj_visible[sensor_name.split(":")[1]] = 0
+                env.num_frames_with_obj_visible["any"] = 0
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
@@ -1222,6 +1223,7 @@ class DataGenerator(object):
                 for sensor_name, sensor in env.robot.sensors.items():
                     if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
                         env.num_frames_with_obj_visible[sensor_name.split(":")[1]] = 0
+                env.num_frames_with_obj_visible["any"] = 0
 
                 selected_src_subtask_inds = subtask_ind_vals[subtask_ind_reordered : subtask_ind_reordered + 2] # [start_step, end_step]
                 traj_list_all = [[],[]]
