@@ -592,6 +592,13 @@ class WaypointTrajectory(object):
                 # Check reference object visibility
                 self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
 
+            # apply a zero action
+            action = env.primitive._empty_action()
+            action[robot.base_action_idx] = th.tensor([0.0, 0.0, 0.0], dtype=th.float32)
+            action[robot.arm_action_idx["left"]] = init_arm_left_pos
+            action[robot.arm_action_idx["right"]] = init_arm_right_pos
+            env.step(action, video_writer)
+
             nav_execution_finish_time = time.time()
             phase_logs[env.execution_phase_ind]["base_mp_execution_time"][0] = round(nav_execution_finish_time - nav_execution_start_time, 2)
             print("nav execution time: ", phase_logs[env.execution_phase_ind]["base_mp_execution_time"][0])
