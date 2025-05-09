@@ -499,8 +499,10 @@ class WaypointTrajectory(object):
             if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
                 shortened_sensor_name = sensor_name.split(":")[1]
                 env.num_frames_with_obj_visible[shortened_sensor_name] = 0
-    
+        env.num_frames_with_obj_visible["any"] = 0
+
     def check_ref_obj_visibility(self, env, obs, obs_info, ref_obj):
+        any_visible = False
         for sensor_name, sensor in env.robot.sensors.items():
             if isinstance(sensor, og.sensors.vision_sensor.VisionSensor):
                 shortened_sensor_name = sensor_name.split(":")[1]
@@ -517,7 +519,11 @@ class WaypointTrajectory(object):
                     #     print("found")
                 if count > 0:
                     env.num_frames_with_obj_visible[shortened_sensor_name] += 1
-                              
+                    any_visible = True
+
+        if any_visible:
+            env.num_frames_with_obj_visible["any"] += 1
+
     def execute_baseline(
         self, 
         env,
@@ -612,6 +618,11 @@ class WaypointTrajectory(object):
                     else:
                         phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_{shortened_sensor_name}"]= 0
                     print(f"Visibility stats for nav_repeat {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_{shortened_sensor_name}"])
+            if num_phase_steps > 0:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+            else:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_any"]= 0
+            print(f"Visibility stats for nav_repeat any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_any"])
 
             MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
             left_mp_ranges = [0, 0]
@@ -776,7 +787,11 @@ class WaypointTrajectory(object):
                         else:
                             phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_{shortened_sensor_name}"]= 0
                         print(f"Visibility stats for arm_interp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_{shortened_sensor_name}"])
-
+                if num_phase_steps > 0:
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+                else:
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_any"]= 0
+                print(f"Visibility stats for arm_interp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_any"])
 
                 # Setting the interpolation ranges
                 MP_end_step_local_list = [local_env_step, local_env_step]
@@ -1028,8 +1043,12 @@ class WaypointTrajectory(object):
                         else:
                             phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"]= 0
                         print(f"Visibility stats for arm_mp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"])
+                if num_phase_steps > 0:
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+                else:
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"]= 0
+                print(f"Visibility stats for arm_mp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"])
 
-                
                 # ============================================== End of Arm MP ==========================================================
 
             # ================================================== Arm Replay ==========================================================
@@ -1122,6 +1141,12 @@ class WaypointTrajectory(object):
                     else:
                         phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"]= 0
                     print(f"Visibility stats for arm_replay {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"])
+            if num_phase_steps > 0:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+            else:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"]= 0
+            print(f"Visibility stats for arm_replay any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"])
+
             # =================================================== End of Arm Replay ==========================================================
 
             results = dict(
@@ -1367,6 +1392,11 @@ class WaypointTrajectory(object):
                         else:
                             phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_{shortened_sensor_name}"]= 0
                         print(f"Visibility stats for nav_mp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_{shortened_sensor_name}"])
+                if num_phase_steps > 0:
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+                else:
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"]= 0
+                print(f"Visibility stats for nav_mp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"])
 
                 if not nav_mp_success:
                     # This will happen if
@@ -1843,6 +1873,12 @@ class WaypointTrajectory(object):
                     else:
                         phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"]= 0
                     print(f"Visibility stats for arm_mp {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_{shortened_sensor_name}"])
+            if num_phase_steps > 0:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+            else:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"]= 0
+            print(f"Visibility stats for arm_mp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"])
+
             # ============================================== End of Arm MP Execution ==========================================================
             
             # ================================================== Arm Replay ==========================================================
@@ -1936,6 +1972,11 @@ class WaypointTrajectory(object):
                     else:
                         phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"]= 0
                     print(f"Visibility stats for arm_replay {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_{shortened_sensor_name}"])
+            if num_phase_steps > 0:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+            else:
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"]= 0
+            print(f"Visibility stats for arm_replay any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"])
 
             # =================================================== End of Arm Replay ==========================================================
 
@@ -2121,8 +2162,12 @@ class WaypointTrajectory(object):
                             else:
                                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_{shortened_sensor_name}"]= 0
                             print(f"Visibility stats for full_retract {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_{shortened_sensor_name}"])
+                    if num_phase_steps > 0:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+                    else:
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_any"]= 0
+                    print(f"Visibility stats for full_retract any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_any"])
 
-                
                 # If full retract failed, try retracting only the torso
                 if retract_torso_only and retract_type != "retract_to_start_of_arm_mp":
                     print("Retracting torso only")
@@ -2212,6 +2257,11 @@ class WaypointTrajectory(object):
                                 else:
                                     phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_{shortened_sensor_name}"]= 0
                                 print(f"Visibility stats for torso_retract {shortened_sensor_name}: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_{shortened_sensor_name}"])
+                        if num_phase_steps > 0:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
+                        else:
+                            phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_any"]= 0
+                        print(f"Visibility stats for torso_retract any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_any"])
 
             # ================================================== End of Arm/Torso Retract ==========================================================
                     
