@@ -11,8 +11,8 @@
         },
         "generation": {
             "path": null,
-            "guarantee": false,
-            "keep_failed": true,
+            "guarantee": true,
+            "keep_failed": false,
             "num_trials": 10,
             "select_src_per_subtask": false,
             "transform_first_robot_pose": false,

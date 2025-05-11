@@ -33,7 +33,7 @@ import random
 import imageio
 import numpy as np
 import torch as th
-th.set_printoptions(precision=3, sci_mode=False)
+th.set_printoptions(precision=3, sci_mode=False, linewidth=1000)
 import warnings
 warnings.filterwarnings('ignore', module='trimesh')
 import logging
@@ -547,7 +547,6 @@ def generate_dataset(
         print("have {} successes out of {} trials so far".format(num_success, num_attempts))
         print("have {} failures out of {} trials so far".format(num_failures, num_attempts))
         print('have {} Base MP failures, {} Arm MP IK failures, {} Arm MP TrajOpt failures, {} Arm MP other failures, {} Base sampling failures, {} Base MP IK failures'.format(base_mp_failures, arm_mp_ik_failures, arm_mp_trajopt_failures, arm_mp_other_failures, base_sampling_failures, base_mp_ik_failures))
-        print('have {} trials with obj visible at start of manip'.format(obj_visible_at_start_of_manip))
         print("*" * 50)
 
         # remember selection of source demos for each subtask
