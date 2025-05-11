@@ -631,6 +631,11 @@ class DataGenerator(object):
                         # print('cur_object_pose', cur_object_pose.shape)
                         # print('src_eef_poses', src_eef_poses.shape)
                         # print('src_subtask_object_pose', src_subtask_object_pose.shape)
+
+                        # If the object is symmetric, we don't need to transform the rotation part of the object pose
+                        if local_task_spec[subtask_ind]["symmetric_object"]:
+                            cur_object_pose[:3, :3] = src_subtask_object_pose[:3, :3]
+
                         transformed_eef_poses = PoseUtils.transform_source_data_segment_using_object_pose(
                             obj_pose=cur_object_pose, 
                             src_eef_poses=src_eef_poses,
@@ -810,7 +815,7 @@ class DataGenerator(object):
                             eef_pose = {"left": (left_waypoint_pos, left_waypoint_ori), "right": (right_waypoint_pos, right_waypoint_ori)}
 
                         # Check reachability. Three options:
-                        # 1. Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
+                        # 1. [USING THIS FOR NOW] Use IK check with collision and only use the last MP waypoint (not replay waypoints as those could have contacts/collisions with the world)
                         # pro: We care about a collision-free IK solution, which this computes. Alternative approach is not that efficient and accurate as you'll see
                         # con: Does not verify for replay waypoints. Which means reaply waypoitns could be unreacahble. This typically won't happen as replay is pretty small deltas
                         # 2. Use IK check without collision and use all (last MP waypoint + replay waypoints). Set the arm position from the returned IK solution for first target pose

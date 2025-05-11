@@ -622,6 +622,7 @@ class WaypointTrajectory(object):
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
             else:
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_any"]= 0
+            phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_steps"] = num_phase_steps
             print(f"Visibility stats for nav_repeat any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_repeat_any"])
 
             MP_end_step_local_list = [cur_subtask_end_step_MP[0], cur_subtask_end_step_MP[1]]
@@ -791,6 +792,7 @@ class WaypointTrajectory(object):
                     phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
                 else:
                     phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_any"]= 0
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_steps"] = num_phase_steps
                 print(f"Visibility stats for arm_interp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_interp_any"])
 
                 # Setting the interpolation ranges
@@ -1047,6 +1049,7 @@ class WaypointTrajectory(object):
                     phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
                 else:
                     phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"]= 0
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_steps"] = num_phase_steps
                 print(f"Visibility stats for arm_mp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"])
 
                 # ============================================== End of Arm MP ==========================================================
@@ -1145,6 +1148,7 @@ class WaypointTrajectory(object):
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
             else:
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"]= 0
+            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_steps"] = num_phase_steps
             print(f"Visibility stats for arm_replay any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"])
 
             # =================================================== End of Arm Replay ==========================================================
@@ -1395,7 +1399,8 @@ class WaypointTrajectory(object):
                 if num_phase_steps > 0:
                     phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
                 else:
-                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"]= 0
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"] = 0
+                phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_steps"] = num_phase_steps
                 print(f"Visibility stats for nav_mp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"nav_mp_any"])
 
                 if not nav_mp_success:
@@ -1877,6 +1882,7 @@ class WaypointTrajectory(object):
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
             else:
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"]= 0
+            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_steps"] = num_phase_steps
             print(f"Visibility stats for arm_mp any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_mp_any"])
 
             # ============================================== End of Arm MP Execution ==========================================================
@@ -1976,6 +1982,7 @@ class WaypointTrajectory(object):
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
             else:
                 phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"]= 0
+            phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_steps"] = num_phase_steps
             print(f"Visibility stats for arm_replay any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"arm_replay_any"])
 
             # =================================================== End of Arm Replay ==========================================================
@@ -2166,6 +2173,7 @@ class WaypointTrajectory(object):
                         phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
                     else:
                         phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_any"]= 0
+                    phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_steps"] = num_phase_steps
                     print(f"Visibility stats for full_retract any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"full_retract_any"])
 
                 # If full retract failed, try retracting only the torso
@@ -2261,6 +2269,7 @@ class WaypointTrajectory(object):
                             phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_any"] = env.num_frames_with_obj_visible["any"] / num_phase_steps
                         else:
                             phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_any"]= 0
+                        phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_steps"] = num_phase_steps
                         print(f"Visibility stats for torso_retract any: ", phase_logs[env.execution_phase_ind]["visibility_stats"][f"torso_retract_any"])
 
             # ================================================== End of Arm/Torso Retract ==========================================================

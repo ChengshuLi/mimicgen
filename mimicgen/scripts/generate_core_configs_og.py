@@ -48,21 +48,13 @@ CAMERA_SIZE = (84, 84)
 
 BASE_BASE_CONFIG_PATH = os.path.join(mimicgen.__path__[0], "exps/templates/omnigibson")
 BASE_CONFIGS = [
-#     os.path.join(BASE_BASE_CONFIG_PATH, "test_pen_book.json"),
-#     os.path.join(BASE_BASE_CONFIG_PATH, "test_cabinet.json"),
-#     os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_giftbox.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_notebook.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_cup.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "test_r1_cup.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "test_tiago_single_arm_cup.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "r1_put_away_cup.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table_mimicgen.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table_skillgen.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_mimicgen.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_skillgen.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away.json"),
+    # os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_skillgen.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_clean_pan.json"),
 ]
 
@@ -72,95 +64,42 @@ def make_generators(base_configs):
     settings for each.
     """
     all_settings = [
+        # MoMaGen Pick Cup
         # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_pen_book.hdf5"),
-        #     dataset_name="test_pen_book",
-        #     generation_path="{}/test_pen_book".format(OUTPUT_FOLDER),
-        #     tasks=["test_pen_book_D0", "test_pen_book_D1"],
-        #     task_names=["D0", "D1"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 10], None],
-        # ),
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_cabinet.hdf5"),
-        #     dataset_name="test_cabinet",
-        #     generation_path="{}/test_cabinet".format(OUTPUT_FOLDER),
-        #     tasks=["test_cabinet_D0", "test_cabinet_D1"],
-        #     task_names=["D0", "D1"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 10], None],
-        # ),
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_giftbox.hdf5"),
-        #     dataset_name="test_tiago_giftbox",
-        #     generation_path="{}/test_tiago_giftbox".format(OUTPUT_FOLDER),
-        #     tasks=["test_tiago_giftbox_D0", "test_tiago_giftbox_D1"],
-        #     task_names=["D0", "D1"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 10], None],
-        # ),
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_notebook.hdf5"),
-        #     dataset_name="test_tiago_notebook",
-        #     generation_path="{}/test_tiago_notebook".format(OUTPUT_FOLDER),
-        #     tasks=["test_tiago_notebook_D0", "test_tiago_notebook_D1"],
-        #     task_names=["D0", "D1"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 6], [0, 1], None],
-        # ),
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_cup.hdf5"),
-        #     dataset_name="test_tiago_cup",
-        #     generation_path="{}/test_tiago_cup".format(OUTPUT_FOLDER),
-        #     tasks=["test_tiago_cup_D0", "test_tiago_cup_D1", "test_tiago_cup_D2"],
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_pick_cup.hdf5"),
+        #     dataset_name="r1_pick_cup",   # this will dictate the name of the config file in core_configs_og
+        #     generation_path="{}/r1_pick_cup".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+        #     tasks=["r1_pick_cup_D0", "r1_pick_cup_D1", "r1_pick_cup_D2"],
         #     task_names=["D0", "D1", "D2"],
         #     select_src_per_subtask=False,
         #     selection_strategy="random",
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         # ),
+        # MimicGen Pick Cup
         # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_r1_cup.hdf5"),
-        #     dataset_name="test_r1_cup",
-        #     generation_path="{}/test_r1_cup".format(OUTPUT_FOLDER),
-        #     tasks=["test_r1_cup_D0", "test_r1_cup_D1", "test_r1_cup_D2", "test_r1_cup_D3"],
-        #     task_names=["D0", "D1", "D2", "D3"],
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_pick_cup.hdf5"),
+        #     dataset_name="r1_pick_cup_mimicgen",   # this will dictate the name of the config file in core_configs_og
+        #     generation_path="{}/r1_pick_cup_mimicgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+        #     tasks=["r1_pick_cup_D0", "r1_pick_cup_D1", "r1_pick_cup_D2"],
+        #     task_names=["D0", "D1", "D2"],
         #     select_src_per_subtask=False,
         #     selection_strategy="random",
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         # ),
+        # # SkillGen Pick Cup
         # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "test_tiago_single_arm_cup.hdf5"),
-        #     dataset_name="test_tiago_single_arm_cup",   # this will dictate the name of the config file in core_configs_og
-        #     generation_path="{}/test_tiago_single_arm_cup".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-        #     tasks=["test_tiago_single_arm_cup_D0", "test_tiago_single_arm_cup_D1", "test_tiago_single_arm_cup_D2", "test_tiago_single_arm_cup_D3"],
-        #     task_names=["D0", "D1", "D2", "D3"],
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_pick_cup.hdf5"),
+        #     dataset_name="r1_pick_cup_skillgen",   # this will dictate the name of the config file in core_configs_og
+        #     generation_path="{}/r1_pick_cup_skillgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+        #     tasks=["r1_pick_cup_D0", "r1_pick_cup_D1", "r1_pick_cup_D2"],
+        #     task_names=["D0", "D1", "D2"],
         #     select_src_per_subtask=False,
         #     selection_strategy="random",
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
-        # ),
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_put_away_cup.hdf5"),
-        #     dataset_name="r1_put_away_cup",   # this will dictate the name of the config file in core_configs_og
-        #     generation_path="{}/r1_put_away_cup".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-        #     tasks=["r1_put_away_cup_D0", "r1_put_away_cup_D1", "r1_put_away_cup_D2", "r1_put_away_cup_D3"],
-        #     task_names=["D0", "D1", "D2", "D3"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
-        # ),
-        # MoMaGen Tidy Table
+        # ),        # MoMaGen Tidy Table
         # dict(
         #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_tidy_table.hdf5"),
         #     dataset_name="r1_tidy_table",   # this will dictate the name of the config file in core_configs_og
@@ -196,53 +135,19 @@ def make_generators(base_configs):
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         # ),
-        # MoMaGen Pick Cup
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_pick_cup.hdf5"),
-        #     dataset_name="r1_pick_cup",   # this will dictate the name of the config file in core_configs_og
-        #     generation_path="{}/r1_pick_cup".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-        #     tasks=["r1_pick_cup_D0", "r1_pick_cup_D1", "r1_pick_cup_D2"],
-        #     task_names=["D0", "D1", "D2"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
-        # ),
-        # MimicGen Pick Cup
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_pick_cup.hdf5"),
-        #     dataset_name="r1_pick_cup_mimicgen",   # this will dictate the name of the config file in core_configs_og
-        #     generation_path="{}/r1_pick_cup_mimicgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-        #     tasks=["r1_pick_cup_D0", "r1_pick_cup_D1", "r1_pick_cup_D2"],
-        #     task_names=["D0", "D1", "D2"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
-        # ),
-        # # SkillGen Pick Cup
+        # MoMaGen Dishes Away
         dict(
-            dataset_path=os.path.join(SRC_DATA_DIR, "r1_pick_cup.hdf5"),
-            dataset_name="r1_pick_cup_skillgen",   # this will dictate the name of the config file in core_configs_og
-            generation_path="{}/r1_pick_cup_skillgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-            tasks=["r1_pick_cup_D0", "r1_pick_cup_D1", "r1_pick_cup_D2"],
+            dataset_path=os.path.join(SRC_DATA_DIR, "r1_dishes_away.hdf5"),
+            dataset_name="r1_dishes_away",   # this will dictate the name of the config file in core_configs_og
+            generation_path="{}/r1_dishes_away".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+            tasks=["r1_dishes_away_D0", "r1_dishes_away_D1", "r1_dishes_away_D2"],
             task_names=["D0", "D1", "D2"],
             select_src_per_subtask=False,
             selection_strategy="random",
             selection_strategy_kwargs=None,
             subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         ),
-        # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_dishes_away.hdf5"),
-        #     dataset_name="r1_dishes_away",   # this will dictate the name of the config file in core_configs_og
-        #     generation_path="{}/r1_dishes_away".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-        #     tasks=["r1_dishes_away_D0", "r1_dishes_away_D1", "r1_dishes_away_D2"],
-        #     task_names=["D0", "D1", "D2"],
-        #     select_src_per_subtask=False,
-        #     selection_strategy="random",
-        #     selection_strategy_kwargs=None,
-        #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
-        # ),
+        # MoMaGen Clean Pan
         # dict(
         #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_clean_pan.hdf5"),
         #     dataset_name="r1_clean_pan",   # this will dictate the name of the config file in core_configs_og

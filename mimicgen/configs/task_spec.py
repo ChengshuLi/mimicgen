@@ -227,6 +227,7 @@ class MG_TaskSpec:
         MP_end_step=None,
         attached_obj=None,
         retract_type=None,
+        symmetric_object=False,
     ):
         """
         Add subtask to this task spec.
@@ -300,6 +301,7 @@ class MG_TaskSpec:
             MP_end_step=MP_end_step,
             attached_obj=attached_obj,
             retract_type=retract_type,
+            symmetric_object=symmetric_object,
         ))
     
     def serialize(self):
