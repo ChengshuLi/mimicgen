@@ -54,8 +54,8 @@ BASE_CONFIGS = [
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_mimicgen.json"),
     # os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_skillgen.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away.json"),
-    # os.path.join(BASE_BASE_CONFIG_PATH, "r1_clean_pan.json"),
+    # os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_clean_pan.json"),
 ]
 
 def make_generators(base_configs):
@@ -136,29 +136,29 @@ def make_generators(base_configs):
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         # ),
         # MoMaGen Dishes Away
-        dict(
-            dataset_path=os.path.join(SRC_DATA_DIR, "r1_dishes_away.hdf5"),
-            dataset_name="r1_dishes_away",   # this will dictate the name of the config file in core_configs_og
-            generation_path="{}/r1_dishes_away".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-            tasks=["r1_dishes_away_D0", "r1_dishes_away_D1", "r1_dishes_away_D2"],
-            task_names=["D0", "D1", "D2"],
-            select_src_per_subtask=False,
-            selection_strategy="random",
-            selection_strategy_kwargs=None,
-            subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
-        ),
-        # MoMaGen Clean Pan
         # dict(
-        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_clean_pan.hdf5"),
-        #     dataset_name="r1_clean_pan",   # this will dictate the name of the config file in core_configs_og
-        #     generation_path="{}/r1_clean_pan".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
-        #     tasks=["r1_clean_pan_D0", "r1_clean_pan_D1", "r1_clean_pan_D2"],
+        #     dataset_path=os.path.join(SRC_DATA_DIR, "r1_dishes_away.hdf5"),
+        #     dataset_name="r1_dishes_away",   # this will dictate the name of the config file in core_configs_og
+        #     generation_path="{}/r1_dishes_away".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+        #     tasks=["r1_dishes_away_D0", "r1_dishes_away_D1", "r1_dishes_away_D2"],
         #     task_names=["D0", "D1", "D2"],
         #     select_src_per_subtask=False,
         #     selection_strategy="random",
         #     selection_strategy_kwargs=None,
         #     subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         # ),
+        # MoMaGen Clean Pan
+        dict(
+            dataset_path=os.path.join(SRC_DATA_DIR, "r1_clean_pan.hdf5"),
+            dataset_name="r1_clean_pan",   # this will dictate the name of the config file in core_configs_og
+            generation_path="{}/r1_clean_pan".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+            tasks=["r1_clean_pan_D0", "r1_clean_pan_D1", "r1_clean_pan_D2"],
+            task_names=["D0", "D1", "D2"],
+            select_src_per_subtask=False,
+            selection_strategy="random",
+            selection_strategy_kwargs=None,
+            subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
+        ),
     ]
 
     assert len(base_configs) == len(all_settings)
