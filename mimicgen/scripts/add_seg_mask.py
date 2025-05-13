@@ -25,6 +25,7 @@ import argparse
 
 gm.DATASET_PATH = "/cvgl2/u/chengshu/OmniGibson/omnigibson/data/og_dataset"
 gm.ENABLE_TRANSITION_RULES = False
+gm.RENDER_VIEWER_CAMERA = False
 
 seed = 0
 random.seed(seed)
@@ -69,9 +70,11 @@ def main(args):
         only_successes=False,
         replay_state=True,
         append_to_input_path=True,
+        load_room_instances=["kitchen_0", "dining_room_0", "entryway_0", "living_room_0"],
     )
     env.playback_dataset_datagen()
     env.input_hdf5.close()
+    og.shutdown()
 
 
 if __name__ == "__main__":
