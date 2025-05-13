@@ -40,7 +40,7 @@ for ABLATION in ABLATIONS:
     for folder in sorted(os.listdir(PATH)):
         print(ABLATION, folder)
         folder_path = os.path.join(PATH, folder)
-        dst_folder_path = os.path.join(DST_PATH)
+        dst_folder_path = os.path.join(DST_PATH, folder)
         for subfolder in sorted(os.listdir(folder_path)):
             if DR not in subfolder: continue
             important_stats_json_file = os.path.join(folder_path, subfolder, "important_stats.json")
