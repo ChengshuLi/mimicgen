@@ -445,31 +445,34 @@ def write_demo_to_hdf5(
         ep_data_grp.create_dataset("states", data=np.stack(states))
 
     # write observations
-    obs = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
-    # TODO: check if we don't write seg_instance how much space do we save
-    ignore_keys = ["robot_r1::robot_r1:left_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:right_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:eyes:Camera:0::seg_instance"]
-    for k in obs:
-        # Uncomment in case we don't want to write seg_instance
-        # if k in ignore_keys:
-        #     # ignore seg_instance
-        #     continue
-        ep_data_grp.create_dataset("obs/{}".format(k), data=np.stack(obs[k]), compression="gzip")
+    if observations is not None:
+        obs = TensorUtils.list_of_flat_dict_to_dict_of_list(observations)
+        # TODO: check if we don't write seg_instance how much space do we save
+        ignore_keys = ["robot_r1::robot_r1:left_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:right_eef_link:Camera:0::seg_instance", "robot_r1::robot_r1:eyes:Camera:0::seg_instance"]
+        for k in obs:
+            # Uncomment in case we don't want to write seg_instance
+            # if k in ignore_keys:
+            #     # ignore seg_instance
+            #     continue
+            ep_data_grp.create_dataset("obs/{}".format(k), data=np.stack(obs[k]), compression="gzip")
 
-    # write observations info
-    dt = h5py.string_dtype(encoding='utf-8')
-    ep_data_grp.create_dataset("obs_info", data=np.array(observations_info, dtype=dt))
+    if observations_info is not None:
+        # write observations info
+        dt = h5py.string_dtype(encoding='utf-8')
+        ep_data_grp.create_dataset("obs_info", data=np.array(observations_info, dtype=dt))
 
     # write datagen info
-    datagen_info = TensorUtils.list_of_flat_dict_to_dict_of_list([x.to_dict() for x in datagen_info])
-    for k in datagen_info:
-        if k in ["object_poses", "subtask_term_signals"]:
-            # convert list of dict to dict of list again
-            datagen_info[k] = TensorUtils.list_of_flat_dict_to_dict_of_list(datagen_info[k])
-            for k2 in datagen_info[k]:
-                datagen_info[k][k2] = np.array(datagen_info[k][k2])
-                ep_data_grp.create_dataset("datagen_info/{}/{}".format(k, k2), data=np.array(datagen_info[k][k2]))
-        else:
-            ep_data_grp.create_dataset("datagen_info/{}".format(k), data=np.array(datagen_info[k]))
+    if datagen_info is not None:
+        datagen_info = TensorUtils.list_of_flat_dict_to_dict_of_list([x.to_dict() for x in datagen_info])
+        for k in datagen_info:
+            if k in ["object_poses", "subtask_term_signals"]:
+                # convert list of dict to dict of list again
+                datagen_info[k] = TensorUtils.list_of_flat_dict_to_dict_of_list(datagen_info[k])
+                for k2 in datagen_info[k]:
+                    datagen_info[k][k2] = np.array(datagen_info[k][k2])
+                    ep_data_grp.create_dataset("datagen_info/{}/{}".format(k, k2), data=np.array(datagen_info[k][k2]))
+            else:
+                ep_data_grp.create_dataset("datagen_info/{}".format(k), data=np.array(datagen_info[k]))
 
     # maybe write which source demonstrations generated this episode
     if src_demo_inds is not None:
@@ -500,12 +503,15 @@ def write_demo_to_hdf5(
         # only for robosuite envs
         ep_data_grp.attrs["model_file"] = initial_state["model"] # model xml for this episode
     ep_data_grp.attrs["num_samples"] = actions.shape[0] # number of transitions in this episode
-    ep_data_grp.attrs["episode_time_taken"] = episode_time_taken # time taken to complete this episode
-    ep_data_grp.attrs["partial"] = partial # whether this task was partially completed
+    if episode_time_taken is not None:
+        ep_data_grp.attrs["episode_time_taken"] = episode_time_taken # time taken to complete this episode
+    if partial is not None:
+        ep_data_grp.attrs["partial"] = partial # whether this task was partially completed
 
     # global metadata
     data_grp.attrs["total"] = actions.shape[0]
-    data_grp.attrs["env_args"] = json.dumps(env.serialize(), indent=4) # environment info
+    if env is not None:
+        data_grp.attrs["env_args"] = json.dumps(env.serialize(), indent=4) # environment info
     data_writer.close()
 
 
