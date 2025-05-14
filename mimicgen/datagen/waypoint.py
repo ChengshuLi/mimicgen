@@ -576,6 +576,10 @@ class WaypointTrajectory(object):
             init_arm_left_pos = robot.get_joint_positions()[robot.arm_control_idx["left"]]
             init_arm_right_pos = robot.get_joint_positions()[robot.arm_control_idx["right"]]
             for temp_idx, src_action in enumerate(src_curr_phase_actions):
+                
+                # To skip initial stationary actions during human data collection
+                if env.execution_phase_ind == 0 and temp_idx < env.start_nav_step:
+                    continue
                 action = env.primitive._empty_action()
                 action[robot.base_action_idx] = th.tensor(src_action[robot.base_action_idx], dtype=th.float32)
                 action[robot.arm_action_idx["left"]] = init_arm_left_pos
@@ -717,7 +721,7 @@ class WaypointTrajectory(object):
                         pose_2=th.tensor(left_waypoint.pose[:4], dtype=th.float32),
                         step_size=step_size,
                     )
-                    # poses_left = th.tensor(poses_left, dtype=th.float32)
+                    poses_left = th.tensor(poses_left, dtype=th.float32)
 
                 current_right_eef_pose = robot.get_eef_pose("right")
                 if object_ref["arm_right"] is None:
@@ -725,10 +729,19 @@ class WaypointTrajectory(object):
                 else:
                     poses_right, _ = PoseUtils.interpolate_poses(
                         pose_1=T.pose2mat(current_right_eef_pose),
-                        pose_2=th.tensor(right_waypoint.pose[:4], dtype=th.float32),
+                        pose_2=th.tensor(right_waypoint.pose[4:], dtype=th.float32),
                         step_size=step_size,
                     )
-                    # poses_right = th.tensor(poses_right, dtype=th.float32)
+                    poses_right = th.tensor(poses_right, dtype=th.float32)
+                
+                if enable_marker_vis:
+                    env.eef_current_marker_left.set_position_orientation(*current_left_eef_pose)
+                    env.eef_current_marker_right.set_position_orientation(*current_right_eef_pose)
+                    interp_target_left = T.mat2pose(poses_left[-1])
+                    interp_target_right = T.mat2pose(poses_right[-1])
+                    env.eef_goal_marker_left.set_position_orientation(*interp_target_left)
+                    env.eef_goal_marker_right.set_position_orientation(*interp_target_right)
+
                 
                 print("len(poses_left): ", len(poses_left))
                 print("len(poses_right): ", len(poses_right))
@@ -758,11 +771,6 @@ class WaypointTrajectory(object):
                     env.step(interp_action, video_writer)
                     left_eef_pose = (pose[0:3, 3], T.mat2quat(th.tensor(pose[0:3, 0:3])))
                     right_eef_pose = (pose[4:7, 3], T.mat2quat(th.tensor(pose[4:7, 0:3])))
-                    if enable_marker_vis:
-                        env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
-                        env.eef_current_marker_right.set_position_orientation(*robot.get_eef_pose("right"))
-                        env.eef_goal_marker_left.set_position_orientation(*left_eef_pose)
-                        env.eef_goal_marker_right.set_position_orientation(*right_eef_pose)
                     local_env_step += 1
                     env.global_env_step += 1
                     states.append(state)
