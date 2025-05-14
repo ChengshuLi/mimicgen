@@ -37,8 +37,10 @@ gm.RENDER_VIEWER_CAMERA = True
 
 def main():
     config_hdf5_path = "/cvgl2/u/chengshu/mimicgen/datasets/source_og/r1_tidy_table.hdf5"   
-    data_hdf5_path = "/mnt/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
-    image_folder = "/scr/chengshu/Downloads/images"
+    # data_hdf5_path = "/mnt/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
+    data_hdf5_path = "/vision/u/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
+    # image_folder = "/scr/chengshu/Downloads/images"
+    image_folder = "/cvgl2/u/chengshu/figure_images"
 
     f_src = h5py.File(config_hdf5_path, "r")
     f_dst = h5py.File(data_hdf5_path, "r")
@@ -70,9 +72,6 @@ def main():
     og.sim.viewer_camera.image_width = 1280
     og.sim.viewer_camera.image_height = 960
     og.sim.enable_viewer_camera_teleoperation()
-    viewer_camera_pos = [7.870, -0.139, 2.384]
-    viewer_camera_orn = [0.390, 0.134, 0.308, 0.857]
-    og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
 
     palette = sns.color_palette("deep")
 
@@ -103,12 +102,15 @@ def main():
         Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, image_file))
 
     # transformed eef
-    breakpoint()
+    viewer_camera_pos = [[7.493, 0.250, 1.482]]
+    viewer_camera_orn = [0.390, 0.134, 0.308, 0.857]
+    og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
+
     for link_name, link in env.robots[0].links.items():
         if link_name not in ["left_gripper_link1", "left_gripper_link2", "left_arm_link6"]:
             link.visible = False
     
-    transformed_eef_timestep = [500, 600, 700]
+    transformed_eef_timestep = [530, 550, 600]
     for timestep in transformed_eef_timestep:
         save_timestep(timestep, "transformed_eef_%05d.png" % timestep)
 
@@ -117,6 +119,10 @@ def main():
             link.visible = True
 
     # sample reachability base poses
+    viewer_camera_pos = [7.870, -0.139, 2.384]
+    viewer_camera_orn = [0.390, 0.134, 0.308, 0.857]
+    og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
+
     robot.highlighted = True
     robot.set_highlight_properties(color=list(palette[0]), intensity=1000.0)
     save_timestep(550, "reachability_success.png")
