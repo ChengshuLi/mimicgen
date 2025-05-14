@@ -27,6 +27,7 @@ import argparse
 from PIL import Image
 import os
 import shutil
+import seaborn as sns
 
 
 gm.DATASET_PATH = "/cvgl2/u/chengshu/OmniGibson/omnigibson/data/og_dataset"
@@ -69,6 +70,11 @@ def main():
     og.sim.viewer_camera.image_width = 1280
     og.sim.viewer_camera.image_height = 960
     og.sim.enable_viewer_camera_teleoperation()
+    viewer_camera_pos = [7.870, -0.139, 2.384]
+    viewer_camera_orn = [0.390, 0.134, 0.308, 0.857]
+    og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
+
+    palette = sns.color_palette("deep")
 
     robot = env.robots[0]
     # Make sure robot is black
@@ -97,8 +103,7 @@ def main():
         Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, image_file))
 
     # transformed eef
-    og.sim.viewer_camera.set_position_orientation([ 7.966, -0.023,  1.857], [0.396, 0.174, 0.373, 0.821])
-
+    breakpoint()
     for link_name, link in env.robots[0].links.items():
         if link_name not in ["left_gripper_link1", "left_gripper_link2", "left_arm_link6"]:
             link.visible = False
@@ -112,34 +117,42 @@ def main():
             link.visible = True
 
     # sample reachability base poses
-    og.sim.viewer_camera.set_position_orientation([ 8.200, -0.233,  2.109], [0.396, 0.174, 0.373, 0.821])
+    robot.highlighted = True
+    robot.set_highlight_properties(color=list(palette[0]), intensity=1000.0)
     save_timestep(550, "reachability_success.png")
     pos, orn = robot.get_position_orientation()
     yaw = T.quat2euler(orn)[2]
     
+    robot.set_highlight_properties(color=list(palette[2]), intensity=1000.0)
     robot.set_position_orientation(pos + th.tensor([0.7, 0.7, 0.0]), T.euler2quat(th.tensor([0.0, 0.0, yaw - np.pi / 4])))
     og.sim.step()
     for _ in range(10): og.sim.render()
     Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "reachability_failure_1.png"))
 
+    robot.set_highlight_properties(color=list(palette[3]), intensity=1000.0)
     robot.set_position_orientation(pos + th.tensor([-0.7, 0.7, 0.0]), T.euler2quat(th.tensor([0.0, 0.0, yaw])))
     og.sim.step()
     for _ in range(10): og.sim.render()
     Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "reachability_failure_2.png"))
 
     # sample visibility base pose
-    og.sim.viewer_camera.set_position_orientation([ 8.200, -0.233,  2.109], [0.396, 0.174, 0.373, 0.821])
+    robot.highlighted = True
+    robot.set_highlight_properties(color=list(palette[0]), intensity=1000.0)
     save_timestep(550, "visibility_success.png")
+
+    robot.set_highlight_properties(color=list(palette[2]), intensity=1000.0)
     robot.joints["torso_joint4"].set_pos(1.0)
     og.sim.step()
     for _ in range(10): og.sim.render()
     Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "visibility_failure_1.png"))
 
+    robot.set_highlight_properties(color=list(palette[3]), intensity=1000.0)
     robot.joints["torso_joint4"].set_pos(0.0)
-    robot.joints["base_footprint_rz_joint"].set_pos(1.0)
+    robot.joints["base_footprint_rz_joint"].set_pos(-0.3)
     og.sim.step()
     for _ in range(10): og.sim.render()
     Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "visibility_failure_2.png"))
+    robot.highlighted = False
 
     # base motion
     base_mp_timestep = [100, 150, 200]
