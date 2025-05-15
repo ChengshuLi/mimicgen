@@ -39,8 +39,8 @@ def main():
     config_hdf5_path = "/cvgl2/u/chengshu/mimicgen/datasets/source_og/r1_tidy_table.hdf5"   
     # data_hdf5_path = "/mnt/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
     data_hdf5_path = "/vision/u/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
-    # image_folder = "/scr/chengshu/Downloads/images"
-    image_folder = "/cvgl2/u/chengshu/figure_images"
+    # image_folder = "/mnt/chengshu/figure_images"
+    image_folder = "/vision/u/chengshu/figure_images"
 
     # f_src = h5py.File(config_hdf5_path, "r")
     # f_dst = h5py.File(data_hdf5_path, "r")
@@ -98,7 +98,7 @@ def main():
         state_t = state[timestep]
         og.sim.load_state(state_t, serialized=True)
         og.sim.step_physics()
-        for _ in range(10): og.sim.render()
+        for _ in range(20): og.sim.render()
         Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, image_file))
 
     # transformed eef
