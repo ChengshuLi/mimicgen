@@ -304,6 +304,28 @@ def prepare_src_dataset_new(
 
     print("File that will be modified with datagen info: {}".format(dataset_path))
 
+    # # ========================== custom changes to save images for paper ==========================
+    # import omnigibson as og
+    # import torch as th
+
+    # robot = env.robots[0]    
+    # for material in robot.materials:
+    #     material.diffuse_color_constant = th.tensor([0.0, 0.0, 0.0])
+    
+    # # Set camera
+    # og.sim.viewer_camera.horizontal_aperture = 35.0
+    # # from ipynb
+    # # og.sim.viewer_camera.set_position_orientation(position=th.tensor([ 5.473, -2.686,  2.403]),orientation=th.tensor([ 0.364, -0.004, -0.004,  0.932]))
+    # # modified
+    # og.sim.viewer_camera.set_position_orientation(th.tensor([ 5.6319, -2.6868,  2.4037]), th.tensor([ 0.4077, -0.0031, -0.0013,  0.9131]))
+
+    # # Add/Remove objects
+    # obj = env.scene.object_registry("name", "fixed_window_glimdy_0")
+    # obj.visible = False
+    # for eef_link_name in robot.eef_link_names.values():
+    #     robot.links[eef_link_name].visual_meshes["VisualSphere"].visible = False
+    # # ============================================================================================
+
     all_datagen_info = env.playback_dataset(record_data=False, callback=env_interface.get_datagen_info, demo_ids=demo_ids)
 
     env.input_hdf5.close()

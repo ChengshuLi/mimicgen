@@ -552,11 +552,13 @@ class WaypointTrajectory(object):
         else:
             ref_object = object_ref["arm_right"]
         
-        if "torso" in ref_object:
-            ref_obj = env.env.robots[0].links["torso_link4"]
-        else:
-            ref_obj = env.env.scene.object_registry("name", ref_object)
-        print("ref_obj: ", ref_obj.name)
+        ref_obj = None
+        if ref_object is not None:
+            if "torso" in ref_object:
+                ref_obj = env.env.robots[0].links["torso_link4"]
+            else:
+                ref_obj = env.env.scene.object_registry("name", ref_object)
+            print("ref_obj: ", ref_obj.name)
         robot = env.env.robots[0]
         
         # TODO: implement early stopping on 1. collision 2. attached object misatch
@@ -600,7 +602,8 @@ class WaypointTrajectory(object):
                 observations_info.append(json.dumps(obs_info))
                 datagen_infos.append(datagen_info)
                 # Check reference object visibility
-                self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                if ref_obj is not None:
+                    self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
 
             # apply a zero action
             action = env.primitive._empty_action()
@@ -745,14 +748,17 @@ class WaypointTrajectory(object):
                 
                 print("len(poses_left): ", len(poses_left))
                 print("len(poses_right): ", len(poses_right))
+                
                 # Perform padding
                 if len(poses_left) < len(poses_right):
-                    repeat_times = len(poses_right) - len(poses_left) + 1
-                    poses_left = poses_left.repeat(repeat_times, 1, 1)
+                    repeat_times = len(poses_right) - len(poses_left)
+                    poses_left = th.cat((poses_left, poses_left[-1].repeat(repeat_times, 1, 1)))
                 elif len(poses_right) < len(poses_left):
-                    repeat_times = len(poses_left) - len(poses_right) + 1
-                    poses_right = poses_right.repeat(repeat_times, 1, 1)
+                    repeat_times = len(poses_left) - len(poses_right)
+                    poses_right = th.cat((poses_right, poses_right[-1].repeat(repeat_times, 1, 1)))
 
+                if len(poses_left) != len(poses_right):
+                    breakpoint()
                 assert len(poses_left) == len(poses_right)
                 poses = np.concatenate([poses_left, poses_right], axis=1)
 
@@ -779,7 +785,8 @@ class WaypointTrajectory(object):
                     observations_info.append(json.dumps(obs_info))
                     datagen_infos.append(datagen_info)
                     cur_success_metrics = env.is_success()
-                    self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                    if ref_obj is not None:
+                        self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                     for k in success:
                         success[k] = success[k] or cur_success_metrics[k]
 
@@ -1014,7 +1021,8 @@ class WaypointTrajectory(object):
                             observations_info.append(json.dumps(obs_info))
                             datagen_infos.append(datagen_info)
                             cur_success_metrics = env.is_success()
-                            self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                            if ref_obj is not None:
+                                self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                             for k in success:
                                 success[k] = success[k] or cur_success_metrics[k]
 
@@ -1135,7 +1143,8 @@ class WaypointTrajectory(object):
                 observations_info.append(json.dumps(obs_info))
                 datagen_infos.append(datagen_info)
                 cur_success_metrics = env.is_success()
-                self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
+                if ref_obj is not None:
+                    self.check_ref_obj_visibility(env, obs, obs_info, ref_obj)
                 for k in success:
                     success[k] = success[k] or cur_success_metrics[k]
 
