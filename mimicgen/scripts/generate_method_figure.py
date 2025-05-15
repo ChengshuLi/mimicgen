@@ -42,8 +42,8 @@ def main():
     # image_folder = "/scr/chengshu/Downloads/images"
     image_folder = "/cvgl2/u/chengshu/figure_images"
 
-    f_src = h5py.File(config_hdf5_path, "r")
-    f_dst = h5py.File(data_hdf5_path, "r")
+    # f_src = h5py.File(config_hdf5_path, "r")
+    # f_dst = h5py.File(data_hdf5_path, "r")
 
     # f_dst["data"].attrs["config"] = f_src["data"].attrs["config"]
     # f_dst["data"].attrs["scene_file"] = f_src["data"].attrs["scene_file"]
