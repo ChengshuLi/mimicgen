@@ -65,26 +65,37 @@ def main():
     traj_grp = h5py_group_to_torch(traj_grp)
     state = traj_grp["state"]
     
-    def save_timestep(timestep, image_file):
+    def save_image(image_file, robot_only=False):
+        obs, obs_info = og.sim.viewer_camera.get_obs()
+        rgb_numpy = obs["rgb"].cpu().numpy()
+        if robot_only:
+            seg_semantic_numpy = obs["seg_semantic"].cpu().numpy()
+            agent_ids = [id for id, category in obs_info["seg_semantic"].items() if category == "agent"]
+            assert len(agent_ids) == 1, "There should be only one agent in the scene"
+            agent_id = agent_ids[0]
+            rgb_numpy[seg_semantic_numpy != agent_id] = 0
+
+        Image.fromarray(rgb_numpy).save(os.path.join(image_folder, image_file))
+
+    def step_and_render():
+        og.sim.step()
+        for _ in range(10):
+            og.sim.render()
+
+    def save_timestep(timestep, image_file, robot_only=False):
         state_t = state[timestep]
-        dicts, total_state_size = og.sim.deserialize(state_t)
-        for obj_name in dicts[0]["object_registry"].keys():
-            if env.scene.object_registry("name", obj_name).kinematic_only:
-                del dicts[0]["object_registry"][obj_name]
-        og.sim.load_state(dicts)
-        og.sim.step_physics()
-        for _ in range(10): og.sim.render()
-        Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, image_file))
+        og.sim.load_state(state_t, serialized=True)
+        step_and_render()
+        save_image(image_file, robot_only=robot_only)
 
     # transformed eef
     viewer_camera_pos = [1.336, 0.872, 1.899]
     viewer_camera_orn = [0.250, 0.462, 0.748, 0.406]
     og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
 
-
-    save_timestep(250, "pick_cup_1.png")
-    save_timestep(800, "pick_cup_2.png")
-    save_timestep(900, "pick_cup_3.png")
+    save_timestep(250, "pick_cup_1.png", robot_only=True)
+    save_timestep(800, "pick_cup_2.png", robot_only=True)
+    save_timestep(900, "pick_cup_3.png", robot_only=False)
 
     env.input_hdf5.close()
     og.shutdown()
