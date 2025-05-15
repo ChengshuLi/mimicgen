@@ -37,7 +37,8 @@ gm.RENDER_VIEWER_CAMERA = True
 
 def main():
     config_hdf5_path = "/cvgl2/u/chengshu/mimicgen/datasets/source_og/r1_pick_cup.hdf5"   
-    image_folder = "/cvgl2/u/chengshu/figure_images"
+    # image_folder = "/scr/chengshu/Downloads/images"
+    image_folder = "/vision/u/chengshu/figure_images"
 
     env = DataPlaybackWrapper.create_from_hdf5(
         input_path=config_hdf5_path,
@@ -53,6 +54,7 @@ def main():
 
     og.sim.viewer_camera.image_width = 2560
     og.sim.viewer_camera.image_height = 1440
+    og.sim.viewer_camera.add_modality("seg_semantic")
     og.sim.enable_viewer_camera_teleoperation()
 
     # Episode 14 is good
@@ -84,7 +86,11 @@ def main():
 
     def save_timestep(timestep, image_file, robot_only=False):
         state_t = state[timestep]
-        og.sim.load_state(state_t, serialized=True)
+        dicts, total_state_size = og.sim.deserialize(state_t)
+        for obj_name in dicts[0]["object_registry"].keys():
+            if env.scene.object_registry("name", obj_name).kinematic_only:
+                del dicts[0]["object_registry"][obj_name]
+        og.sim.load_state(dicts)
         step_and_render()
         save_image(image_file, robot_only=robot_only)
 
