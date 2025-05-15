@@ -102,7 +102,7 @@ def main():
         Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, image_file))
 
     # transformed eef
-    viewer_camera_pos = [[7.493, 0.250, 1.482]]
+    viewer_camera_pos = [7.493, 0.250, 1.482]
     viewer_camera_orn = [0.390, 0.134, 0.308, 0.857]
     og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
 
