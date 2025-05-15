@@ -39,7 +39,7 @@ def main():
     config_hdf5_path = "/cvgl2/u/chengshu/mimicgen/datasets/source_og/r1_tidy_table.hdf5"   
     # data_hdf5_path = "/mnt/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
     data_hdf5_path = "/vision/u/chengshu/momagen/tidy_table_full/r1_tidy_table_worker_9/demo_src_r1_tidy_table_task_D1/demo.hdf5"
-    # image_folder = "/mnt/chengshu/figure_images"
+    # image_folder = "/scr/chengshu/Downloads/images"
     image_folder = "/vision/u/chengshu/figure_images"
 
     # f_src = h5py.File(config_hdf5_path, "r")
@@ -71,6 +71,7 @@ def main():
 
     og.sim.viewer_camera.image_width = 1280
     og.sim.viewer_camera.image_height = 960
+    og.sim.viewer_camera.add_modality("seg_semantic")
     og.sim.enable_viewer_camera_teleoperation()
 
     palette = sns.color_palette("deep")
@@ -93,30 +94,46 @@ def main():
     # Grab episode data
     traj_grp = h5py_group_to_torch(traj_grp)
     state = traj_grp["states"]
-    
-    def save_timestep(timestep, image_file):
+
+    def save_image(image_file, robot_only=False):
+        obs, obs_info = og.sim.viewer_camera.get_obs()
+        rgb_numpy = obs["rgb"].cpu().numpy()
+        if robot_only:
+            seg_semantic_numpy = obs["seg_semantic"].cpu().numpy()
+            agent_ids = [id for id, category in obs_info["seg_semantic"].items() if category == "agent"]
+            assert len(agent_ids) == 1, "There should be only one agent in the scene"
+            agent_id = agent_ids[0]
+            rgb_numpy[seg_semantic_numpy != agent_id] = 0
+
+        Image.fromarray(rgb_numpy).save(os.path.join(image_folder, image_file))
+
+    def step_and_render():
+        og.sim.step()
+        for _ in range(10):
+            og.sim.render()
+
+    def save_timestep(timestep, image_file, robot_only=False):
         state_t = state[timestep]
         og.sim.load_state(state_t, serialized=True)
-        og.sim.step_physics()
-        for _ in range(20): og.sim.render()
-        Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, image_file))
+        step_and_render()
+        save_image(image_file, robot_only=robot_only)
 
     # transformed eef
     viewer_camera_pos = [7.493, 0.250, 1.482]
     viewer_camera_orn = [0.390, 0.134, 0.308, 0.857]
     og.sim.viewer_camera.set_position_orientation(viewer_camera_pos, viewer_camera_orn)
 
-    for link_name, link in env.robots[0].links.items():
-        if link_name not in ["left_gripper_link1", "left_gripper_link2", "left_arm_link6"]:
-            link.visible = False
+    # for link_name, link in env.robots[0].links.items():
+    #     if link_name not in ["left_gripper_link1", "left_gripper_link2", "left_arm_link6"]:
+    #         link.visible = False
     
     transformed_eef_timestep = [530, 550, 600]
-    for timestep in transformed_eef_timestep:
-        save_timestep(timestep, "transformed_eef_%05d.png" % timestep)
+    for i, timestep in enumerate(transformed_eef_timestep):
+        save_timestep(timestep, "transformed_eef_%05d.png" % timestep, robot_only=i != len(transformed_eef_timestep) - 1)
 
-    for link_name, link in env.robots[0].links.items():
-        if link_name not in ["left_gripper_link1", "left_gripper_link2", "left_arm_link6"]:
-            link.visible = True
+    # for link_name, link in env.robots[0].links.items():
+    #     if link_name not in ["left_gripper_link1", "left_gripper_link2", "left_arm_link6"]:
+    #         link.visible = True
 
     # sample reachability base poses
     viewer_camera_pos = [7.870, -0.139, 2.384]
@@ -131,15 +148,13 @@ def main():
     
     robot.set_highlight_properties(color=list(palette[2]), intensity=1000.0)
     robot.set_position_orientation(pos + th.tensor([0.7, 0.7, 0.0]), T.euler2quat(th.tensor([0.0, 0.0, yaw - np.pi / 4])))
-    og.sim.step()
-    for _ in range(10): og.sim.render()
-    Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "reachability_failure_1.png"))
+    step_and_render()
+    save_image("reachability_failure_1.png", robot_only=True)
 
     robot.set_highlight_properties(color=list(palette[3]), intensity=1000.0)
     robot.set_position_orientation(pos + th.tensor([-0.7, 0.7, 0.0]), T.euler2quat(th.tensor([0.0, 0.0, yaw])))
-    og.sim.step()
-    for _ in range(10): og.sim.render()
-    Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "reachability_failure_2.png"))
+    step_and_render()
+    save_image("reachability_failure_2.png", robot_only=True)
 
     # sample visibility base pose
     robot.highlighted = True
@@ -148,32 +163,30 @@ def main():
 
     robot.set_highlight_properties(color=list(palette[2]), intensity=1000.0)
     robot.joints["torso_joint4"].set_pos(1.0)
-    og.sim.step()
-    for _ in range(10): og.sim.render()
-    Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "visibility_failure_1.png"))
+    step_and_render()
+    save_image("visibility_failure_1.png", robot_only=True)
 
     robot.set_highlight_properties(color=list(palette[3]), intensity=1000.0)
     robot.joints["torso_joint4"].set_pos(0.0)
     robot.joints["base_footprint_rz_joint"].set_pos(-0.3)
-    og.sim.step()
-    for _ in range(10): og.sim.render()
-    Image.fromarray(og.sim.viewer_camera.get_obs()[0]["rgb"].cpu().numpy()).save(os.path.join(image_folder, "visibility_failure_2.png"))
+    step_and_render()
+    save_image("visibility_failure_2.png", robot_only=True)
     robot.highlighted = False
 
     # base motion
     base_mp_timestep = [100, 150, 200]
-    for timestep in base_mp_timestep:
-        save_timestep(timestep, "base_mp_%05d.png" % timestep)
+    for i, timestep in enumerate(base_mp_timestep):
+        save_timestep(timestep, "base_mp_%05d.png" % timestep, robot_only=i != len(base_mp_timestep) - 1)
 
     # arm motion
     arm_mp_timestep = [250, 450, 650]
-    for timestep in arm_mp_timestep:
-        save_timestep(timestep, "arm_mp_%05d.png" % timestep)
+    for i, timestep in enumerate(arm_mp_timestep):
+        save_timestep(timestep, "arm_mp_%05d.png" % timestep, robot_only=i != len(arm_mp_timestep) - 1)
     
     # retract motion
     retract_timestep = [650, 825, 1000]
-    for timestep in retract_timestep:
-        save_timestep(timestep, "retract_%05d.png" % timestep)
+    for i, timestep in enumerate(retract_timestep):
+        save_timestep(timestep, "retract_%05d.png" % timestep, robot_only=i != len(retract_timestep) - 1)
 
     env.input_hdf5.close()
     og.shutdown()
