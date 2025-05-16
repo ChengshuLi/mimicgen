@@ -90,7 +90,7 @@ og.sim.stop()
 
 import seaborn as sns
 palette = sns.color_palette("deep")
-palette = [np.array(palette[0]) * 0.2, np.array(palette[3]) * 0.2]
+palette = [np.array(palette[0]) * 0.4, np.array(palette[3]) * 0.4]
 # color = th.cat((th.tensor(palette[0]), th.tensor([1.0])))
 
 # paths = ["/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_ablation_only_soft/demo_src_r1_dishes_away_task_D0/demo.hdf5",
