@@ -21,9 +21,9 @@ import os
 import matplotlib.pyplot as plt
 
 # image_folder = "/scr/chengshu/Downloads/images"
-image_folder = "/vision/u/chengshu/figure_images
+image_folder = "/vision/u/chengshu/figure_images"
 # data_folder = "/mnt/chengshu"
-data_folder = "/vision/u/chengshu
+data_folder = "/vision/u/chengshu"
 
 gm.DATASET_PATH = "/cvgl2/u/chengshu/OmniGibson/omnigibson/data/og_dataset"
 
