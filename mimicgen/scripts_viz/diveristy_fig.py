@@ -49,13 +49,13 @@ env = og.Environment(configs=config)
 rot = R.from_euler("xyz", [0, 0, 180], degrees=True).as_quat()
 table_pos = env.task.object_scope["countertop.n.01_1"].get_position_orientation()[0]
 og.sim.viewer_camera.set_position_orientation(
-    position=th.tensor([table_pos[0] - 0.2, table_pos[1] - 0.2, 4]),
+    position=th.tensor([table_pos[0] - 0.2, table_pos[1] - 0.2, 4.0]),
     orientation=th.tensor(rot)
 )
 og.sim.viewer_camera.image_height = 960
 og.sim.viewer_camera.image_width = 1280
 og.sim.stop()
-# og.sim.viewer_camera.horizontal_aperture = 31.0
+og.sim.viewer_camera.horizontal_aperture = 31.0
 
 # +
 # Hide objects
@@ -169,3 +169,5 @@ for obj_j, obj in enumerate(objects):
 
     og.sim.stop()
     for _ in range(10): og.sim.step()
+
+og.shutdown()
