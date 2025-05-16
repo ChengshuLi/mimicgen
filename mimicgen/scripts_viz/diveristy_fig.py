@@ -20,10 +20,10 @@ from PIL import Image
 import os
 import matplotlib.pyplot as plt
 
-# image_folder = "/scr/chengshu/Downloads/images"
-image_folder = "/vision/u/chengshu/figure_images"
-# data_folder = "/mnt/chengshu"
-data_folder = "/vision/u/chengshu"
+image_folder = "/scr/chengshu/Downloads/images"
+# image_folder = "/vision/u/chengshu/figure_images"
+data_folder = "/mnt/chengshu"
+# data_folder = "/vision/u/chengshu"
 
 gm.DATASET_PATH = "/cvgl2/u/chengshu/OmniGibson/omnigibson/data/og_dataset"
 
@@ -90,7 +90,7 @@ og.sim.stop()
 
 import seaborn as sns
 palette = sns.color_palette("deep")
-palette = [np.array(palette[0]) * 0.4, np.array(palette[3]) * 0.4]
+palette = [np.array(palette[0]), np.array(palette[3]), np.array(palette[2])]
 # color = th.cat((th.tensor(palette[0]), th.tensor([1.0])))
 
 # paths = ["/home/arpit/test_projects/mimicgen/datasets/generated_data_mimicgen_format/core_datasets_og/r1_dishes_away_ablation_only_soft/demo_src_r1_dishes_away_task_D0/demo.hdf5",
@@ -100,7 +100,10 @@ palette = [np.array(palette[0]) * 0.4, np.array(palette[3]) * 0.4]
 paths = [
     f"{data_folder}/momagen/tidy_table_full_old/r1_tidy_table_worker_0/demo_src_r1_tidy_table_task_D0/demo.hdf5",
     f"{data_folder}/momagen/tidy_table_full/r1_tidy_table_worker_0/demo_src_r1_tidy_table_task_D1/demo.hdf5",
+    f"{data_folder}/skillgen/tidy_table_full/r1_tidy_table_worker_0/demo_src_r1_tidy_table_skillgen_task_D0/demo.hdf5",
 ]
+# objects = ["teacup_601"]
+# objects = ["base"]
 objects = ["teacup_601", "base", "left_eef"]
 
 interval = 200
@@ -113,7 +116,8 @@ for obj_j, obj in enumerate(objects):
         with h5py.File(path, "r") as f:
             num_demos = len(f["data"].keys())
             # If D0/D1 wise color
-            color = th.cat((th.tensor(palette[path_j]), th.tensor([1.0])))
+            color = th.tensor(palette[path_j])
+            rgba = th.cat((color, th.tensor([1.0])))
             marker_list = []
             pos_list = []
             for i in range(num_demos):
@@ -137,7 +141,7 @@ for obj_j, obj in enumerate(objects):
                         radius=0.05,
                         height=0.02,
                         visual_only=True,
-                        rgba=color
+                        rgba=rgba,
                     )
                     marker_list.append(marker)
                     pos_list.append(pos)
@@ -149,12 +153,13 @@ for obj_j, obj in enumerate(objects):
             og.sim.batch_add_objects(marker_list, [env.scene] * len(marker_list))
             for marker, pos in zip(marker_list, pos_list):
                 marker.set_position_orientation(position=pos)
-
+                marker.root_link.visual_meshes["visuals"].material.diffuse_tint = color
             marker_list_all.extend(marker_list)
 
 
     og.sim.play()
     for _ in range(10): og.sim.step()
+
     print(f"Saving image for {obj}: {len(marker_list_all)} markers")
     viewer_camera_img = og.sim.viewer_camera.get_obs()[0]["rgb"][:, :, :3]
     Image.fromarray(viewer_camera_img.cpu().numpy()).save(os.path.join(image_folder, f"diversity_{obj}.png"))
