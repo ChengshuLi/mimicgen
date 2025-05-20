@@ -278,9 +278,8 @@ def update_params_r1_tidy_table(kwargs, baseline):
         original_quat = kwargs["robots"][0]["orientation"]
         rot_z_45 = R.from_euler('z', 45, degrees=True)
         original_rot = R.from_quat(original_quat)
-        kwargs["robots"][0]["orientation"]
         new_rot = rot_z_45 * original_rot
-        rotated_quat = new_rot.as_quat()
+        rotated_quat = new_rot.as_quat().tolist()
         kwargs["robots"][0]["orientation"] = rotated_quat
 
 def update_params_r1_dishes_away(kwargs, baseline):
