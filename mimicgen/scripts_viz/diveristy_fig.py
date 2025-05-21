@@ -78,10 +78,10 @@ from PIL import Image
 import os
 import matplotlib.pyplot as plt
 
-image_folder = "/scr/chengshu/Downloads/images"
-# image_folder = "/vision/u/chengshu/figure_images"
-data_folder_prefix = "/mnt"
-# data_folder_prefix = "/vision/u"
+# image_folder = "/scr/chengshu/Downloads/images"
+image_folder = "/vision/u/chengshu/figure_images"
+# data_folder_prefix = "/mnt"
+data_folder_prefix = "/vision/u"
 
 task = "pick_cup"
 
