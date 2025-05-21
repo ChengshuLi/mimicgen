@@ -38,7 +38,14 @@ elif task == "tidy_table":
 elif task == "dishes_away":
     paths = [
         [f"{data_folder_prefix}/chengshu/momagen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_task_D0/demo.hdf5" for i in range(1)],
-        [f"{data_folder_prefix}/mengdixu/momagen/{task}_full_vis/r1_{task}_worker_{i}/demo_src_r1_{task}_task_D1/demo.hdf5" for i in range(25)],
+        [f"{data_folder_prefix}/mengdixu/momagen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_task_D1/demo.hdf5" for i in range(25)],
+        [f"{data_folder_prefix}/chengshu/mimicgen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_mimicgen_task_D0/demo.hdf5" for i in range(25)],
+        [f"{data_folder_prefix}/chengshu/skillgen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_skillgen_task_D0/demo.hdf5" for i in range(25)],
+    ]
+elif task == "clean_pan":
+    paths = [
+        [f"{data_folder_prefix}/chengshu/momagen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_task_D0/demo.hdf5" for i in range(1)],
+        [f"{data_folder_prefix}/chengshu/momagen/{task}_full_vis/r1_{task}_worker_{i}/demo_src_r1_{task}_task_D1/demo.hdf5" for i in range(25)],
         [f"{data_folder_prefix}/chengshu/mimicgen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_mimicgen_task_D0/demo.hdf5" for i in range(25)],
         [f"{data_folder_prefix}/chengshu/skillgen/{task}_full/r1_{task}_worker_{i}/demo_src_r1_{task}_skillgen_task_D0/demo.hdf5" for i in range(25)],
     ]
