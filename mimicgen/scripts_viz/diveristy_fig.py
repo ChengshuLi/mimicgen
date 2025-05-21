@@ -83,7 +83,7 @@ image_folder = "/vision/u/chengshu/figure_images"
 # data_folder_prefix = "/mnt"
 data_folder_prefix = "/vision/u"
 
-task = "pick_cup"
+task = "tidy_table"
 
 gm.DATASET_PATH = "/cvgl2/u/chengshu/OmniGibson/omnigibson/data/og_dataset"
 
@@ -110,7 +110,7 @@ rot = R.from_euler("xyz", [0, 0, 180], degrees=True).as_quat()
 if task != "pick_cup":
     table_pos = env.scene.object_registry("name", "bar_udatjt_0").get_position_orientation()[0]
     og.sim.viewer_camera.set_position_orientation(
-        position=th.tensor([table_pos[0] - 0.2, table_pos[1] - 0.2, 5.0]),
+        position=th.tensor([table_pos[0] - 0.6, table_pos[1] - 0.35, 4.5]),
         orientation=th.tensor(rot)
     )
 else:
@@ -164,9 +164,6 @@ elif task == "clean_pan":
         obj.visible = False
 
 for _ in range(10): og.sim.step()
-
-# +
-# for _ in range(300): og.sim.render()
 # -
 
 og.sim.play()
