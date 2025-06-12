@@ -48,12 +48,12 @@ CAMERA_SIZE = (84, 84)
 
 BASE_BASE_CONFIG_PATH = os.path.join(mimicgen.__path__[0], "exps/templates/omnigibson")
 BASE_CONFIGS = [
-    os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table_mimicgen.json"),
-    os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table_skillgen.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_mimicgen.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_pick_cup_skillgen.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table_mimicgen.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_tidy_table_skillgen.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away_mimicgen.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_dishes_away_skillgen.json"),
@@ -189,7 +189,7 @@ def make_generators(base_configs):
             subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         ),
         # MimicGen Clean Pan
-         dict(
+        dict(
             dataset_path=os.path.join(SRC_DATA_DIR, "r1_clean_pan.hdf5"),
             dataset_name="r1_clean_pan_mimicgen",   # this will dictate the name of the config file in core_configs_og
             generation_path="{}/r1_clean_pan_mimicgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
@@ -201,7 +201,7 @@ def make_generators(base_configs):
             subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
         ),
         # SkillGen Clean Pan
-         dict(
+        dict(
             dataset_path=os.path.join(SRC_DATA_DIR, "r1_clean_pan.hdf5"),
             dataset_name="r1_clean_pan_skillgen",   # this will dictate the name of the config file in core_configs_og
             generation_path="{}/r1_clean_pan_skillgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
