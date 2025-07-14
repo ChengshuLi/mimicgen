@@ -902,7 +902,7 @@ class MG_R1DishesAway(OmniGibsonInterfaceBimanual):
         """
         # two relative objects: coffee_cup and teacup
         return dict(
-            bar_gjeoer_0=self.get_object_pose(obj=self.env.scene.object_registry("name", "bar_gjeoer_0")),
+            countertop_kelker_0=self.get_object_pose(obj=self.env.scene.object_registry("name", "countertop_kelker_0")),
             shelf_pfusrd_1=self.get_object_pose(obj=self.env.scene.object_registry("name", "shelf_pfusrd_1")),
             plate_603=self.get_object_pose(obj=self.env.scene.object_registry("name", "plate_603")),
             plate_602=self.get_object_pose(obj=self.env.scene.object_registry("name", "plate_602")),
