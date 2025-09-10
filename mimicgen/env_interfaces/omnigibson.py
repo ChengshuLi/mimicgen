@@ -19,6 +19,8 @@ from mimicgen.datagen.datagen_info import DatagenInfo
 import torch as th
 
 import pdb
+from omnigibson.robots.r1 import R1
+from omnigibson.robots.tiago import Tiago
 
 
 class OmniGibsonInterface(MG_EnvInterface):
@@ -949,12 +951,18 @@ class MG_R1CleanPan(OmniGibsonInterfaceBimanual):
         Returns:
             object_poses (dict): dictionary that maps object name (str) to object pose matrix (4x4 np.array)
         """
+        if isinstance(self.robot, Tiago):
+            torso_link_name = "torso_lift_link"
+        elif isinstance(self.robot, R1):
+            torso_link_name = "torso_link4"
+        else:
+            raise ValueError("Robot type not supported")
         # two relative objects: coffee_cup and teacup
         return dict(
             frying_pan_602=self.get_object_pose(obj=self.env.scene.object_registry("name", "frying_pan_602")),
             scrub_brush_601=self.get_object_pose(obj=self.env.scene.object_registry("name", "scrub_brush_601")),
             robot_r1=self.get_object_pose(obj=self.env.scene.object_registry("name", "robot_r1")),
-            torso_link4=self.get_object_pose(obj=self.env.robots[0].links["torso_link4"]),
+            torso_link4=self.get_object_pose(obj=self.env.robots[0].links[torso_link_name]),
         )
 
     def get_subtask_term_signals(self):
@@ -983,4 +991,36 @@ class MG_R1CleanPan(OmniGibsonInterfaceBimanual):
         # signals["grasp_left"] = abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"])))
         # signals["ungrasp_left"] = abs(1-abs(int(self.robot.is_grasping(arm="left", candidate_obj=self.env.task.object_scope["dixie_cup.n.01_1"]))))
 
+        return signals
+
+class MG_R1BringingWater(OmniGibsonInterfaceBimanual):
+    """
+    Corresponds to OG test_r1_cup task and variants.
+    """
+    def get_object_poses(self):
+        """
+        Gets the pose of each object relevant to MimicGen data generation in the current scene.
+
+        Returns:
+            object_poses (dict): dictionary that maps object name (str) to object pose matrix (4x4 np.array)
+        """
+        # two relative objects: coffee_cup and teacup
+        return dict(
+            beer_bottle_595=self.get_object_pose(obj=self.env.scene.object_registry("name", "beer_bottle_595")),
+            fridge_dszchb_0=T.pose2mat(self.env.scene.object_registry("name", "fridge_dszchb_0").links["link_0"].get_position_orientation()),
+        )
+
+    def get_subtask_term_signals(self):
+        """
+        Gets a dictionary of binary flags for each subtask in a task. The flag is 1
+        when the subtask has been completed and 0 otherwise. MimicGen only uses this
+        when parsing source demonstrations at the start of data generation, and it only
+        uses the first 0 -> 1 transition in this signal to detect the end of a subtask.
+
+        Returns:
+            subtask_term_signals (dict): dictionary that maps subtask name to termination flag (0 or 1)
+        """
+        signals = dict()
+
+        signals["grasp_right"] = abs(int(self.robot.is_grasping(arm="right", candidate_obj=self.env.scene.object_registry("name", "coffee_cup"))))
         return signals

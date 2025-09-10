@@ -23,6 +23,8 @@ from mimicgen.datagen.waypoint import WaypointSequence, WaypointTrajectory
 import omnigibson as og
 import omnigibson.utils.transform_utils as T
 from omnigibson.action_primitives.curobo import CuRoboEmbodimentSelection
+from omnigibson.robots.r1 import R1
+from omnigibson.robots.tiago import Tiago
 
 class DataGenerator(object):
     """
@@ -604,7 +606,13 @@ class DataGenerator(object):
 
                     # breakpoint()
                     # hack when ref object is robot
-                    if subtask_object_name in ["robot_r1", "torso_link4"]:
+                    if isinstance(env.robot, Tiago):
+                        torso_link_name = "torso_lift_link"
+                    elif isinstance(env.robot, R1):
+                        torso_link_name = "torso_link4"
+                    else:
+                        raise ValueError("Robot type not supported")
+                    if subtask_object_name in ["robot_r1", torso_link_name]:
                         frame_to_use_for_src_object_pose = end_step_of_MP_local[current_phase_ind][arm_i][subtask_ind]
                     else:
                         frame_to_use_for_src_object_pose = selected_src_subtask_inds[0]
@@ -735,7 +743,13 @@ class DataGenerator(object):
                 
                 if not env.manipulation_only:
                     # TODO: this is a hacky for handling clean pan task. Improve this
-                    if object_ref["arm_left"] is not None and object_ref["arm_left"] in ["robot_r1", "torso_joint4"]:
+                    if isinstance(env.robot, Tiago):
+                        torso_link_name = "torso_lift_link"
+                    elif isinstance(env.robot, R1):
+                        torso_link_name = "torso_link4"
+                    else:
+                        raise ValueError("Robot type not supported")
+                    if object_ref["arm_left"] is not None and object_ref["arm_left"] in ["robot_r1", torso_link_name]:
                         reachable_and_visible = True
                     else:         
                         # ========== Check reachibility and visibility of the reference object ==============
@@ -1279,7 +1293,13 @@ class DataGenerator(object):
 
                     # breakpoint()
                     # hack when ref object is robot
-                    if subtask_object_name in ["robot_r1", "torso_link4"]:
+                    if isinstance(env.robot, Tiago):
+                        torso_link_name = "torso_lift_link"
+                    elif isinstance(env.robot, R1):
+                        torso_link_name = "torso_link4"
+                    else:
+                        raise ValueError("Robot type not supported")
+                    if subtask_object_name in ["robot_r1", torso_link_name]:
                         frame_to_use_for_src_object_pose = end_step_of_MP_local[current_phase_ind][arm_i][subtask_ind]
                     else:
                         frame_to_use_for_src_object_pose = selected_src_subtask_inds[0]

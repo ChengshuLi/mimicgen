@@ -60,6 +60,7 @@ BASE_CONFIGS = [
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_clean_pan.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_clean_pan_mimicgen.json"),
     os.path.join(BASE_BASE_CONFIG_PATH, "r1_clean_pan_skillgen.json"),
+    os.path.join(BASE_BASE_CONFIG_PATH, "r1_bringing_water.json"),
 ]
 
 def make_generators(base_configs):
@@ -206,6 +207,18 @@ def make_generators(base_configs):
             dataset_name="r1_clean_pan_skillgen",   # this will dictate the name of the config file in core_configs_og
             generation_path="{}/r1_clean_pan_skillgen".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
             tasks=["r1_clean_pan_D0", "r1_clean_pan_D1", "r1_clean_pan_D2"],
+            task_names=["D0", "D1", "D2"],
+            select_src_per_subtask=False,
+            selection_strategy="random",
+            selection_strategy_kwargs=None,
+            subtask_term_offset_range=[[5, 6], [0, 1], None, [5, 6], [0, 1], None],
+        ),
+        # MoMaGen Bringing Water
+        dict(
+            dataset_path=os.path.join(SRC_DATA_DIR, "r1_bringing_water.hdf5"),
+            dataset_name="r1_bringing_water",   # this will dictate the name of the config file in core_configs_og
+            generation_path="{}/r1_bringing_water".format(OUTPUT_FOLDER), # this is where the MimicGen generated data will be stored inside {path}/core_datasets_og
+            tasks=["r1_bringing_water_D0", "r1_bringing_water_D1", "r1_bringing_water_D2"],
             task_names=["D0", "D1", "D2"],
             select_src_per_subtask=False,
             selection_strategy="random",

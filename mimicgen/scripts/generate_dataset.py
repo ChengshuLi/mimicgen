@@ -61,6 +61,8 @@ from omnigibson.objects.primitive_object import PrimitiveObject
 import os
 os.environ["TRIMESH_NO_PYEMBREE"] = "1"
 
+ROBOT_TYPE = "Tiago"
+
 def visualize_base_poses(env):
     # ================== Visualization ==================
     sampled_base_poses = env.sampled_base_poses
@@ -208,6 +210,81 @@ def generate_dataset(
 
     # get environment metadata from dataset
     env_meta = get_env_metadata_from_dataset(dataset_path=source_dataset_path)
+    
+    if ROBOT_TYPE == "Tiago":
+        env_meta["env_kwargs"]["robots"][0]["type"] = "Tiago"
+        # TODO: we keep name as r1 for now
+        tiago_reset_joint_pos = th.tensor([
+            0.0000,  0.0000,  0.0003,  0.0000,  0.0000,
+           -0.0000,  0.3500,  0.8637,      0.8401,      0.0000,
+            -0.8935,     -0.8862,     -0.4500,      1.8286,      1.8267,
+             1.1199,      1.1741,      1.1771,      1.1749,     -1.4134,
+            -1.2823, -1.0891, -1.0891,  0.0450,  0.0450,
+            0.0450,  0.0450
+        ])
+
+
+        tiago_controller_config = {
+            'arm_left': {
+                'name': 'JointController',
+                'motor_type': 'position', 
+                'pos_kp': 150,
+                'command_input_limits': None,
+                'command_output_limits': None,
+                'use_impedances': False,
+                'use_delta_commands': False
+            },
+            'arm_right': {
+                'name': 'JointController',
+                'motor_type': 'position',
+                'pos_kp': 150, 
+                'command_input_limits': None,
+                'command_output_limits': None,
+                'use_impedances': False,
+                'use_delta_commands': False
+            },
+            'gripper_left': {
+                'name': 'MultiFingerGripperController',
+                'mode': 'smooth',
+                'command_input_limits': 'default',
+                'command_output_limits': 'default'
+            },
+            'gripper_right': {
+                'name': 'MultiFingerGripperController', 
+                'mode': 'smooth',
+                'command_input_limits': 'default',
+                'command_output_limits': 'default'
+            },
+            'base': {
+                'name': 'HolonomicBaseJointController',
+                'motor_type': 'velocity',
+                'vel_kp': 150,
+                'command_input_limits': [[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]],
+                'command_output_limits': [[-1.5      , -1.5      , -3.1415927], [1.5      , 1.5      , 3.1415927]],
+                'use_impedances': False
+            },
+            'trunk': {
+                'name': 'JointController',
+                'motor_type': 'position',
+                'pos_kp': 150,
+                'command_input_limits': None, 
+                'command_output_limits': None,
+                'use_impedances': False,
+                'use_delta_commands': False
+            },
+            'camera': {
+                'name': 'JointController',
+                'motor_type': 'position',
+                'use_impedances': False,
+                'use_delta_commands': False
+            }
+        }        
+        
+        env_meta["env_kwargs"]["robots"][0]["reset_joint_pos"] = tiago_reset_joint_pos.tolist()
+        env_meta["env_kwargs"]["robots"][0]["controller_config"] = tiago_controller_config
+        
+        if env_meta["env_kwargs"]["scene"]["scene_model"] == "house_single_floor":
+            env_meta["env_kwargs"]["scene"]["load_room_types"] = ["kitchen"]
 
     # set seed for generation
     random.seed(mg_config.experiment.seed)

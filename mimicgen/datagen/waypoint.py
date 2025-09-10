@@ -20,6 +20,8 @@ from omnigibson.action_primitives.curobo import CuRoboEmbodimentSelection
 import torch as th
 from mimicgen.utils.misc_utils import hori_concatenate_image
 import omnigibson as og
+from omnigibson.robots.r1 import R1
+from omnigibson.robots.tiago import Tiago
 
 from scipy.spatial.transform import Rotation as R
 
@@ -555,7 +557,13 @@ class WaypointTrajectory(object):
         ref_obj = None
         if ref_object is not None:
             if "torso" in ref_object:
-                ref_obj = env.env.robots[0].links["torso_link4"]
+                if isinstance(env.robot, Tiago):
+                    torso_link_name = "torso_lift_link"
+                elif isinstance(env.robot, R1):
+                    torso_link_name = "torso_link4"
+                else:
+                    raise ValueError("Robot type not supported")
+                ref_obj = env.env.robots[0].links[torso_link_name]
             else:
                 ref_obj = env.env.scene.object_registry("name", ref_object)
             print("ref_obj: ", ref_obj.name)
@@ -1241,7 +1249,13 @@ class WaypointTrajectory(object):
             ref_object = object_ref["arm_right"]
         
         if "torso" in ref_object:
-            ref_obj = env.env.robots[0].links["torso_link4"]
+            if isinstance(env.robot, Tiago):
+                torso_link_name = "torso_lift_link"
+            elif isinstance(env.robot, R1):
+                torso_link_name = "torso_link4"
+            else:
+                raise ValueError("Robot type not supported")
+            ref_obj = env.env.robots[0].links[torso_link_name]
         else:
             ref_obj = env.env.scene.object_registry("name", ref_object)
         env.primitive._tracking_object = ref_obj
@@ -1336,14 +1350,15 @@ class WaypointTrajectory(object):
 
                 print("Base MP trial: ", base_mp_trial)
                 
-                # breakpoint()
+                enable_visibility_constraint = isinstance(env.robot, R1) and env.hard_visibility_constraint # TODO: make this more general to handle Tiago
+                
                 # Pass only the eef that has a reference object associated with it (i.e. the arm that is relevant for this sub-step)
                 if object_ref["arm_right"] is None:
-                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"left": eef_pose["left"]}, visibility_constraint=env.hard_visibility_constraint)
+                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"left": eef_pose["left"]}, visibility_constraint=enable_visibility_constraint)
                 elif object_ref["arm_left"] is None:
-                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"right": eef_pose["right"]}, visibility_constraint=env.hard_visibility_constraint)
+                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose={"right": eef_pose["right"]}, visibility_constraint=enable_visibility_constraint)
                 else:
-                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose=eef_pose, visibility_constraint=env.hard_visibility_constraint)
+                    action_generator = env.primitive._navigate_to_obj(obj=ref_obj, eef_pose=eef_pose, visibility_constraint=enable_visibility_constraint)
                 # action_generator = env.primitive._navigate_to_obj(obj=ref_obj, visibility_constraint=env.hard_visibility_constraint)
                 
                 init_state = og.sim.dump_state()
@@ -1812,7 +1827,8 @@ class WaypointTrajectory(object):
                         state = env.get_state()["states"]
                         obs, obs_info = env.get_obs_IL()
                         datagen_info = env_interface.get_datagen_info(action=mp_action)
-                        # TODO: Check if we can use primtiive stack execute action here. This will allow for checking convergence errors etc.
+                        # TODO: Check if we can use primitive stack execute action here. This will allow for checking convergence errors etc.
+                        mp_action = env.primitive._postprocess_action(mp_action)
                         env.step(mp_action, video_writer)
                         if enable_marker_vis:
                             env.eef_current_marker_left.set_position_orientation(*robot.get_eef_pose("left"))
